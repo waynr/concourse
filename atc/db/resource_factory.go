@@ -1,8 +1,6 @@
 package db
 
 import (
-	"errors"
-
 	sq "github.com/Masterminds/squirrel"
 	"github.com/concourse/concourse/atc/db/lock"
 )
@@ -11,7 +9,6 @@ import (
 
 type ResourceFactory interface {
 	VisibleResources([]string) ([]Resource, error)
-	ResourceChecks() ([]ResourceCheck, error)
 }
 
 type resourceFactory struct {
@@ -56,8 +53,4 @@ func (r *resourceFactory) VisibleResources(teamNames []string) ([]Resource, erro
 	}
 
 	return resources, nil
-}
-
-func (r *resourceFactory) ResourceChecks() ([]ResourceCheck, error) {
-	return nil, errors.New("nope")
 }
