@@ -1,6 +1,7 @@
 package k8s_test
 
 import (
+	"fmt"
 	"time"
 
 	. "github.com/concourse/concourse/topgun"
@@ -37,6 +38,41 @@ var _ = Describe("baggageclaim drivers", func() {
 			baggageclaimWorks("btrfs", UBUNTU)
 			baggageclaimWorks("overlay", UBUNTU)
 			baggageclaimWorks("naive", UBUNTU)
+		})
+
+		Context("with a real btrfs partition", func() {
+			It("successfully recreates the worker", func() {
+				By("deploying concourse with ONLY one worker and having the worker pod use the gcloud disk and format it with btrfs")
+
+				setReleaseNameAndNamespace("real-btrfs-disk")
+
+				deployWithDriverAndSelectors("btrfs", UBUNTU,
+					"--set=persistence.enabled=false",
+					"--set=worker.additionalVolumes[0].name=concourse-work-dir",
+					"--set=worker.additionalVolumes[0].gcePersistentDisk.pdName=disk-topgun-k8s-btrfs-test",
+					"--set=worker.additionalVolumes[0].gcePersistentDisk.fsType=btrfs",
+				)
+
+				waitAllPodsInNamespaceToBeReady(namespace)
+
+				By("Creating the web proxy")
+				_, atcEndpoint := startPortForwarding(namespace, "service/"+releaseName+"-web", "8080")
+
+				By("Logging in")
+				fly.Login("test", "test", atcEndpoint)
+
+				By("Setting and triggering a pipeline that always fails which creates volumes on the persistent disk")
+				fly.Run("set-pipeline", "-n", "-c", "../pipelines/pipeline-that-fails.yml", "-p", "failing-pipeline")
+				fly.Run("unpause-pipeline", "-p", "failing-pipeline")
+				sessionTriggerJob := fly.Start("trigger-job", "-w", "-j", "failing-pipeline/simple-job")
+				<-sessionTriggerJob.Exited
+
+				By("deleting the worker pod which triggers the initContainer script")
+				deletePods(releaseName, fmt.Sprintf("--selector=app=%s-worker", releaseName))
+
+				By("all pods should be running")
+				waitAllPodsInNamespaceToBeReady(namespace)
+			})
 		})
 
 	})
