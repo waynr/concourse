@@ -1,6 +1,8 @@
 package db
 
 import (
+	"database/sql"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/concourse/concourse/atc/db/lock"
 )
@@ -8,6 +10,7 @@ import (
 //go:generate counterfeiter . ResourceFactory
 
 type ResourceFactory interface {
+	Resource(int) (Resource, bool, error)
 	VisibleResources([]string) ([]Resource, error)
 }
 
@@ -21,6 +24,28 @@ func NewResourceFactory(conn Conn, lockFactory lock.LockFactory) ResourceFactory
 		conn:        conn,
 		lockFactory: lockFactory,
 	}
+}
+
+func (r *resourceFactory) Resource(resourceID int) (Resource, bool, error) {
+	resource := &resource{
+		conn:        r.conn,
+		lockFactory: r.lockFactory,
+	}
+
+	row := resourcesQuery.
+		Where(sq.Eq{"r.id": resourceID}).
+		RunWith(r.conn).
+		QueryRow()
+
+	err := scanResource(resource, row)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	return resource, true, nil
 }
 
 func (r *resourceFactory) VisibleResources(teamNames []string) ([]Resource, error) {

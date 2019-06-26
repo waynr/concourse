@@ -797,21 +797,31 @@ func (cmd *RunCommand) constructBackendMembers(
 	)
 
 	dbBuildFactory := db.NewBuildFactory(dbConn, lockFactory, cmd.GC.OneOffBuildGracePeriod)
+	dbCheckFactory := db.NewCheckFactory(dbConn, lockFactory)
 	dbPipelineFactory := db.NewPipelineFactory(dbConn, lockFactory)
 
 	bus := dbConn.Bus()
 
 	members := []grouper.Member{
 		{Name: "lidar", Runner: lidar.NewRunner(
-			lidar.New(
-				logger.Session("lidar"),
-				dbPipelineFactory,
-				radarSchedulerFactory,
-				variablesFactory,
-				bus,
+			logger.Session("lidar"),
+			clock.NewClock(),
+			lidar.NewScanner(
+				logger.Session("lidar-scanner"),
+				dbCheckFactory,
+				atc.NewPlanFactory(time.Now().Unix()),
+				secretManager,
+				cmd.GlobalResourceCheckTimeout,
+				cmd.ResourceCheckingInterval,
 			),
 			10*time.Second,
-			clock.NewClock(),
+			lidar.NewChecker(
+				logger.Session("lidar-checker"),
+				dbCheckFactory,
+				engine,
+			),
+			10*time.Second,
+			bus,
 		)},
 		{Name: "pipelines", Runner: pipelines.SyncRunner{
 			Syncer: cmd.constructPipelineSyncer(
@@ -819,7 +829,6 @@ func (cmd *RunCommand) constructBackendMembers(
 				dbPipelineFactory,
 				radarSchedulerFactory,
 				secretManager,
-				bus,
 			),
 			Interval: 10 * time.Second,
 			Clock:    clock.NewClock(),
@@ -1385,13 +1394,13 @@ func (cmd *RunCommand) constructEngine(
 		defaultLimits,
 		strategy,
 		resourceFactory,
+		lockFactory,
 	)
 
 	stepBuilder := builder.NewStepBuilder(
 		stepFactory,
 		builder.NewDelegateFactory(),
 		cmd.ExternalURL.String(),
-		lockFactory,
 	)
 
 	return engine.NewEngine(stepBuilder)
@@ -1540,7 +1549,6 @@ func (cmd *RunCommand) constructPipelineSyncer(
 	pipelineFactory db.PipelineFactory,
 	radarSchedulerFactory pipelines.RadarSchedulerFactory,
 	secretManager creds.Secrets,
-	bus db.NotificationsBus,
 ) *pipelines.Syncer {
 	return pipelines.NewSyncer(
 		logger,
