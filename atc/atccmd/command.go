@@ -136,7 +136,7 @@ type RunCommand struct {
 	Metrics struct {
 		HostName            string            `long:"metrics-host-name" description:"Host string to attach to emitted metrics."`
 		Attributes          map[string]string `long:"metrics-attribute" description:"A key-value attribute to attach to emitted metrics. Can be specified multiple times." value-name:"NAME:VALUE"`
-		BufferSize   	    uint32 	      `long:"metrics-buffer-size" default:"1000" description:"The size of the buffer used in emitting event metrics."`
+		BufferSize          uint32            `long:"metrics-buffer-size" default:"1000" description:"The size of the buffer used in emitting event metrics."`
 		CaptureErrorMetrics bool              `long:"capture-error-metrics" description:"Enable capturing of error log metrics"`
 	} `group:"Metrics & Diagnostics"`
 
@@ -152,6 +152,7 @@ type RunCommand struct {
 
 		OneOffBuildGracePeriod time.Duration `long:"one-off-grace-period" default:"5m" description:"Period after which one-off build containers will be garbage-collected."`
 		MissingGracePeriod     time.Duration `long:"missing-grace-period" default:"5m" description:"Period after which to reap containers and volumes that were created but went missing from the worker."`
+		CheckRecyclePeriod     time.Duration `long:"check-recycle-period" default:"168h" description:"Period after which to reap checks that are completed."`
 	} `group:"Garbage Collection" namespace:"gc"`
 
 	BuildTrackerInterval time.Duration `long:"build-tracker-interval" default:"10s" description:"Interval on which to run build tracking."`
@@ -796,6 +797,7 @@ func (cmd *RunCommand) constructBackendMembers(
 		checkContainerStrategy,
 	)
 
+	dbCheckLifecycle := db.NewCheckLifecycle(dbConn)
 	dbBuildFactory := db.NewBuildFactory(dbConn, lockFactory, cmd.GC.OneOffBuildGracePeriod)
 	dbCheckFactory := db.NewCheckFactory(dbConn, lockFactory)
 	dbPipelineFactory := db.NewPipelineFactory(dbConn, lockFactory)
