@@ -24,6 +24,7 @@ import (
 	"github.com/concourse/concourse/atc/api/auth"
 	"github.com/concourse/concourse/atc/api/buildserver"
 	"github.com/concourse/concourse/atc/api/containerserver"
+	"github.com/concourse/concourse/atc/api/resourceserver"
 	"github.com/concourse/concourse/atc/auditor"
 	"github.com/concourse/concourse/atc/builds"
 	"github.com/concourse/concourse/atc/creds"
@@ -546,6 +547,7 @@ func (cmd *RunCommand) constructAPIMembers(
 
 	resourceFactory := resource.NewResourceFactory()
 	dbResourceCacheFactory := db.NewResourceCacheFactory(dbConn, lockFactory)
+	checkFactory := db.NewCheckFactory(dbConn, lockFactory)
 	fetchSourceFactory := resource.NewFetchSourceFactory(dbResourceCacheFactory, resourceFactory)
 	resourceFetcher := resource.NewFetcher(clock.NewClock(), lockFactory, fetchSourceFactory)
 	dbResourceConfigFactory := db.NewResourceConfigFactory(dbConn, lockFactory)
@@ -585,17 +587,11 @@ func (cmd *RunCommand) constructAPIMembers(
 	pool := worker.NewPool(workerProvider)
 	workerClient := worker.NewClient(pool, workerProvider)
 
-	checkContainerStrategy := worker.NewRandomPlacementStrategy()
-
-	radarScannerFactory := radar.NewScannerFactory(
-		pool,
-		resourceFactory,
-		dbResourceConfigFactory,
-		cmd.ResourceTypeCheckingInterval,
-		cmd.ResourceCheckingInterval,
-		cmd.ExternalURL.String(),
+	checker := resourceserver.NewChecker(
+		logger,
 		secretManager,
-		checkContainerStrategy,
+		checkFactory,
+		cmd.GlobalResourceCheckTimeout,
 	)
 
 	credsManagers := cmd.CredentialManagers
@@ -605,6 +601,7 @@ func (cmd *RunCommand) constructAPIMembers(
 	dbContainerRepository := db.NewContainerRepository(dbConn)
 	gcContainerDestroyer := gc.NewDestroyer(logger, dbContainerRepository, dbVolumeRepository)
 	dbBuildFactory := db.NewBuildFactory(dbConn, lockFactory, cmd.GC.OneOffBuildGracePeriod)
+	dbCheckFactory := db.NewCheckFactory(dbConn, lockFactory)
 	accessFactory := accessor.NewAccessFactory(authHandler.PublicKey())
 
 	apiHandler, err := cmd.constructAPIHandler(
@@ -619,10 +616,11 @@ func (cmd *RunCommand) constructAPIMembers(
 		dbContainerRepository,
 		gcContainerDestroyer,
 		dbBuildFactory,
+		dbCheckFactory,
 		dbResourceConfigFactory,
 		userFactory,
 		workerClient,
-		radarScannerFactory,
+		checker,
 		secretManager,
 		credsManagers,
 		accessFactory,
@@ -811,7 +809,6 @@ func (cmd *RunCommand) constructBackendMembers(
 			lidar.NewScanner(
 				logger.Session("lidar-scanner"),
 				dbCheckFactory,
-				atc.NewPlanFactory(time.Now().Unix()),
 				secretManager,
 				cmd.GlobalResourceCheckTimeout,
 				cmd.ResourceCheckingInterval,
@@ -1451,10 +1448,11 @@ func (cmd *RunCommand) constructAPIHandler(
 	dbContainerRepository db.ContainerRepository,
 	gcContainerDestroyer gc.Destroyer,
 	dbBuildFactory db.BuildFactory,
+	dbCheckFactory db.CheckFactory,
 	resourceConfigFactory db.ResourceConfigFactory,
 	dbUserFactory db.UserFactory,
 	workerClient worker.Client,
-	radarScannerFactory radar.ScannerFactory,
+	checker resourceserver.Checker,
 	secretManager creds.Secrets,
 	credsManagers creds.Managers,
 	accessFactory accessor.AccessFactory,
@@ -1504,13 +1502,14 @@ func (cmd *RunCommand) constructAPIHandler(
 		dbContainerRepository,
 		gcContainerDestroyer,
 		dbBuildFactory,
+		dbCheckFactory,
 		resourceConfigFactory,
 		dbUserFactory,
 
 		buildserver.NewEventHandler,
 
 		workerClient,
-		radarScannerFactory,
+		checker,
 
 		reconfigurableSink,
 
