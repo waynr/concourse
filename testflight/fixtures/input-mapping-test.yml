@@ -5,7 +5,6 @@ resources:
   source:
     initial_version: version
 
-
 jobs:
 - name: upstream-job
   plan:
