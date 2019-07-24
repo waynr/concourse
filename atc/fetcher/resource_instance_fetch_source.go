@@ -3,6 +3,8 @@ package fetcher
 import (
 	"context"
 
+	"github.com/concourse/concourse/atc/runtime"
+
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
@@ -162,7 +164,7 @@ func (s *resourceInstanceFetchSource) Create(ctx context.Context) (resource.Vers
 	versionedSource, err = res.Get(
 		ctx,
 		volume,
-		resource.IOConfig{
+		runtime.IOConfig{
 			Stdout: s.imageFetchingDelegate.Stdout(),
 			Stderr: s.imageFetchingDelegate.Stderr(),
 		},

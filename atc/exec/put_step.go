@@ -9,6 +9,7 @@ import (
 	"github.com/concourse/concourse/atc/creds"
 	"github.com/concourse/concourse/atc/db"
 	"github.com/concourse/concourse/atc/resource"
+	"github.com/concourse/concourse/atc/runtime"
 	"github.com/concourse/concourse/atc/worker"
 )
 
@@ -33,7 +34,7 @@ type PutStep struct {
 	resourceFactory       resource.ResourceFactory
 	resourceConfigFactory db.ResourceConfigFactory
 	strategy              worker.ContainerPlacementStrategy
-	pool                  worker.Pool
+	workerClient      	  worker.Client
 	delegate              PutDelegate
 	succeeded             bool
 }
@@ -46,7 +47,7 @@ func NewPutStep(
 	resourceFactory resource.ResourceFactory,
 	resourceConfigFactory db.ResourceConfigFactory,
 	strategy worker.ContainerPlacementStrategy,
-	pool worker.Pool,
+	workerClient worker.Client,
 	delegate PutDelegate,
 ) *PutStep {
 	return &PutStep{
@@ -56,7 +57,7 @@ func NewPutStep(
 		containerMetadata:     containerMetadata,
 		resourceFactory:       resourceFactory,
 		resourceConfigFactory: resourceConfigFactory,
-		pool:                  pool,
+		workerClient:     	   workerClient,
 		strategy:              strategy,
 		delegate:              delegate,
 	}
@@ -77,7 +78,7 @@ func (step *PutStep) Run(ctx context.Context, state RunState) error {
 		"job-id":    step.metadata.JobID,
 	})
 
-	step.delegate.Initializing(logger)
+	//step.delegate.Initializing(logger)
 
 	variables := step.delegate.Variables()
 
@@ -137,48 +138,103 @@ func (step *PutStep) Run(ctx context.Context, state RunState) error {
 
 	owner := db.NewBuildStepContainerOwner(step.metadata.BuildID, step.planID, step.metadata.TeamID)
 
-	chosenWorker, err := step.pool.FindOrChooseWorkerForContainer(
+	containerSpec.BindMounts = []worker.BindMountSource{
+		&worker.CertsVolumeMount{Logger: logger},
+	}
+
+	imageSpec := worker.ImageFetcherSpec{
+		ResourceTypes: resourceTypes,
+		Delegate:      step.delegate,
+	}
+
+
+	events := make(chan runtime.Event, 1)
+	//go func(logger lager.Logger, events chan runtime.Event, delegate PutDelegate) {
+	//	for {
+	//		ev := <-events
+	//		switch {
+	//		case ev.EventType == runtime.InitializingEvent:
+	//			step.delegate.Initializing(logger)
+	//
+	//		case ev.EventType == runtime.StartingEvent:
+	//			step.delegate.Starting(logger)
+	//
+	//		case ev.EventType == runtime.FinishedEvent:
+	//			step.delegate.Finished(logger, ExitStatus(ev.ExitStatus))
+	//
+	//		default:
+	//			return
+	//		}
+	//	}
+	//}(logger, events, step.delegate)
+
+	step.delegate.Initializing(logger)
+
+	resourceDir := resource.ResourcesDir("put")
+
+	versionResult := &runtime.VersionResult{}
+	versionResult, err = step.workerClient.RunPutStep(
 		ctx,
 		logger,
 		owner,
 		containerSpec,
 		workerSpec,
+		source,
+		params,
 		step.strategy,
-	)
-	if err != nil {
-		return err
-	}
-
-	containerSpec.BindMounts = []worker.BindMountSource{
-		&worker.CertsVolumeMount{Logger: logger},
-	}
-
-	container, err := chosenWorker.FindOrCreateContainer(
-		ctx,
-		logger,
-		step.delegate,
-		owner,
 		step.containerMetadata,
-		containerSpec,
-		resourceTypes,
-	)
-	if err != nil {
-		return err
-	}
-
-	step.delegate.Starting(logger)
-
-	putResource := step.resourceFactory.NewResourceForContainer(container)
-	versionResult, err := putResource.Put(
-		ctx,
-		resource.IOConfig{
+		imageSpec,
+		resourceDir,
+		runtime.IOConfig{
 			Stdout: step.delegate.Stdout(),
 			Stderr: step.delegate.Stderr(),
 		},
-		source,
-		params,
+		events,
 	)
 
+
+	//chosenWorker, err := step.pool.FindOrChooseWorkerForContainer(
+	//	ctx,
+	//	logger,
+	//	owner,
+	//	containerSpec,
+	//	workerSpec,
+	//	step.strategy,
+	//)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//containerSpec.BindMounts = []worker.BindMountSource{
+	//	&worker.CertsVolumeMount{Logger: logger},
+	//}
+	//
+	//container, err := chosenWorker.FindOrCreateContainer(
+	//	ctx,
+	//	logger,
+	//	step.delegate,
+	//	owner,
+	//	step.containerMetadata,
+	//	containerSpec,
+	//	resourceTypes,
+	//)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//step.delegate.Starting(logger)
+	//
+	//putResource := step.resourceFactory.NewResourceForContainer(container)
+	//versionResult, err := putResource.Put(
+	//	ctx,
+	//	resource.IOConfig{
+	//		Stdout: step.delegate.Stdout(),
+	//		Stderr: step.delegate.Stderr(),
+	//	},
+	//	source,
+	//	params,
+	//)
+	//
 	if err != nil {
 		logger.Error("failed-to-put-resource", err)
 
@@ -206,6 +262,7 @@ func (step *PutStep) Run(ctx context.Context, state RunState) error {
 	step.delegate.Finished(logger, 0, versionInfo)
 
 	return nil
+
 }
 
 // Succeeded returns true if the resource script exited successfully.
