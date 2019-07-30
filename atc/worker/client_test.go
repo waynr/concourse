@@ -9,8 +9,14 @@ import (
 	"code.cloudfoundry.org/garden"
 	"code.cloudfoundry.org/garden/gardenfakes"
 	"github.com/concourse/concourse/atc"
+	"github.com/concourse/concourse/atc/creds/credsfakes"
+	"github.com/concourse/concourse/atc/db/dbfakes"
 	"github.com/concourse/concourse/atc/db/lock/lockfakes"
+	"github.com/concourse/concourse/atc/exec"
+	"github.com/concourse/concourse/atc/exec/artifact"
 	"github.com/concourse/concourse/atc/exec/execfakes"
+	"github.com/concourse/concourse/atc/resource"
+	"github.com/concourse/concourse/atc/resource/resourcefakes"
 	"github.com/concourse/concourse/atc/runtime"
 	"github.com/onsi/gomega/gbytes"
 
@@ -553,7 +559,7 @@ var _ = Describe("Client", func() {
 				})
 
 				It("does not send a Starting event", func() {
-					Expect(eventChan).ToNot(Receive(Equal(runtime.Event{runtime.StartingEvent, 0})))
+					Expect(eventChan).ToNot(Receive(Equal(runtime.Event{EventType: runtime.StartingEvent, ExitStatus: 0})))
 				})
 
 				It("does not create a new container", func() {
@@ -703,7 +709,7 @@ var _ = Describe("Client", func() {
 				})
 
 				It("sends a Starting event", func() {
-					Expect(eventChan).To(Receive(Equal(runtime.Event{"Starting", 0})))
+					Expect(eventChan).To(Receive(Equal(runtime.Event{EventType: "Starting",ExitStatus: 0})))
 				})
 
 				It("runs a new process in the container", func() {
@@ -970,6 +976,97 @@ var _ = Describe("Client", func() {
 					})
 				})
 			})
+		})
+	})
+
+	Describe("RunPutStep", func() {
+
+		var (
+			ctx    context.Context
+			cancel func()
+
+			fakeWorker                *workerfakes.FakeWorker
+			fakeStrategy              *workerfakes.FakeContainerPlacementStrategy
+			fakeDelegate              *execfakes.FakePutDelegate
+
+			interpolatedResourceTypes atc.VersionedResourceTypes
+
+			containerMetadata = db.ContainerMetadata{
+				WorkingDirectory: resource.ResourcesDir("put"),
+				Type:             db.ContainerTypePut,
+				StepName:         "some-step",
+			}
+
+			stepMetadata = exec.StepMetadata{
+				TeamID:       123,
+				TeamName:     "some-team",
+				BuildID:      42,
+				BuildName:    "some-build",
+				PipelineID:   4567,
+				PipelineName: "some-pipeline",
+			}
+
+			repo  *artifact.Repository
+
+			// stdoutBuf *gbytes.Buffer
+			// stderrBuf *gbytes.Buffer
+
+			planID atc.PlanID
+
+			fakeSource        *workerfakes.FakeArtifactSource
+			fakeOtherSource   *workerfakes.FakeArtifactSource
+			fakeMountedSource *workerfakes.FakeArtifactSource
+		)
+
+		BeforeEach(func() {
+			fakeSource = new(workerfakes.FakeArtifactSource)
+			fakeOtherSource = new(workerfakes.FakeArtifactSource)
+			fakeMountedSource = new(workerfakes.FakeArtifactSource)
+		})
+
+		It("finds/chooses a worker and creates a container with the correct type, session, and sources with no inputs specified (meaning it takes all artifacts)", func() {
+			Expect(fakePool.FindOrChooseWorkerForContainerCallCount()).To(Equal(1))
+			_, _, actualOwner, actualContainerSpec, actualWorkerSpec, strategy := fakePool.FindOrChooseWorkerForContainerArgsForCall(0)
+			Expect(actualOwner).To(Equal(db.NewBuildStepContainerOwner(42, atc.PlanID(planID), 123)))
+			Expect(actualContainerSpec.ImageSpec).To(Equal(worker.ImageSpec{
+				ResourceType: "some-resource-type",
+			}))
+			Expect(actualContainerSpec.Tags).To(Equal([]string{"some", "tags"}))
+			Expect(actualContainerSpec.TeamID).To(Equal(123))
+			Expect(actualContainerSpec.Env).To(Equal(stepMetadata.Env()))
+			Expect(actualContainerSpec.Dir).To(Equal("/tmp/build/put"))
+			Expect(actualContainerSpec.Inputs).To(HaveLen(3))
+			Expect(actualWorkerSpec).To(Equal(worker.WorkerSpec{
+				TeamID:        123,
+				Tags:          []string{"some", "tags"},
+				ResourceType:  "some-resource-type",
+				ResourceTypes: interpolatedResourceTypes,
+			}))
+			Expect(strategy).To(Equal(fakeStrategy))
+
+			_, _, delegate, owner, actualContainerMetadata, containerSpec, actualResourceTypes := fakeWorker.FindOrCreateContainerArgsForCall(0)
+			Expect(owner).To(Equal(db.NewBuildStepContainerOwner(42, atc.PlanID(planID), 123)))
+			Expect(actualContainerMetadata).To(Equal(containerMetadata))
+			Expect(containerSpec.ImageSpec).To(Equal(worker.ImageSpec{
+				ResourceType: "some-resource-type",
+			}))
+			Expect(containerSpec.Tags).To(Equal([]string{"some", "tags"}))
+			Expect(containerSpec.TeamID).To(Equal(123))
+			Expect(containerSpec.Env).To(Equal(stepMetadata.Env()))
+			Expect(containerSpec.Dir).To(Equal("/tmp/build/put"))
+			Expect(containerSpec.Inputs).To(HaveLen(3))
+
+			Expect([]worker.ArtifactSource{
+				containerSpec.Inputs[0].Source(),
+				containerSpec.Inputs[1].Source(),
+				containerSpec.Inputs[2].Source(),
+			}).To(ConsistOf(
+				exec.PutResourceSource{fakeSource},
+				exec.PutResourceSource{fakeOtherSource},
+				exec.PutResourceSource{fakeMountedSource},
+			))
+			Expect(actualResourceTypes).To(Equal(interpolatedResourceTypes))
+			Expect(delegate).To(Equal(fakeDelegate))
 		})
 	})
 })

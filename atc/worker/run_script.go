@@ -76,9 +76,11 @@ func RunScript(
 	var process garden.Process
 
 	if recoverable {
-		process, err = container.Attach(ResourceProcessID, processIO)
+		process, err = container.Attach(ctx, ResourceProcessID, processIO)
 		if err != nil {
-			process, err = container.Run(garden.ProcessSpec{
+			process, err = container.Run(
+				ctx,
+				garden.ProcessSpec{
 				ID:   ResourceProcessID,
 				Path: path,
 				Args: args,
@@ -88,7 +90,9 @@ func RunScript(
 			}
 		}
 	} else {
-		process, err = container.Run(garden.ProcessSpec{
+		process, err = container.Run(
+			ctx,
+			garden.ProcessSpec{
 			Path: path,
 			Args: args,
 		}, processIO)

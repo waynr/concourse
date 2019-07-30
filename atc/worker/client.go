@@ -40,20 +40,20 @@ type Client interface {
 		chan runtime.Event,
 	) TaskResult
 	RunPutStep(
-		ctx context.Context,
-		logger lager.Logger,
-		owner db.ContainerOwner,
-		containerSpec ContainerSpec,
-		workerSpec WorkerSpec,
-		source atc.Source,
-		params atc.Params,
-		strategy ContainerPlacementStrategy,
-		metadata db.ContainerMetadata,
-		imageSpec ImageFetcherSpec,
-		resourceDir string,
-		ioConfig runtime.IOConfig,
-		events chan runtime.Event,
-	) (*runtime.VersionResult, error)
+		context.Context,
+		lager.Logger,
+		db.ContainerOwner,
+		ContainerSpec,
+		WorkerSpec,
+		atc.Source,
+		atc.Params,
+		ContainerPlacementStrategy,
+		db.ContainerMetadata,
+		ImageFetcherSpec,
+		string,
+		runtime.IOConfig,
+		chan runtime.Event,
+	) (runtime.VersionResult, error)
 }
 
 func NewClient(pool Pool, provider WorkerProvider) *client {
@@ -399,9 +399,9 @@ func (client *client) RunPutStep(
 	resourceDir string,
 	ioConfig runtime.IOConfig,
 	events chan runtime.Event,
-) (*runtime.VersionResult, error) {
+) (runtime.VersionResult, error) {
 
-	vr := &runtime.VersionResult{}
+	vr := runtime.VersionResult{}
 
 	chosenWorker, err := client.pool.FindOrChooseWorkerForContainer(
 		ctx,

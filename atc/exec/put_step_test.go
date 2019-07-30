@@ -3,6 +3,7 @@ package exec_test
 import (
 	"context"
 	"errors"
+
 	"github.com/concourse/concourse/atc/runtime"
 
 	. "github.com/onsi/ginkgo"
@@ -64,6 +65,9 @@ var _ = Describe("PutStep", func() {
 		stderrBuf *gbytes.Buffer
 
 		planID atc.PlanID
+
+		versionResult runtime.VersionResult
+		clientErr     error
 	)
 
 	BeforeEach(func() {
@@ -122,6 +126,11 @@ var _ = Describe("PutStep", func() {
 			Tags:                   []string{"some", "tags"},
 			VersionedResourceTypes: uninterpolatedResourceTypes,
 		}
+
+		versionResult = runtime.VersionResult{
+				Version:  atc.Version{"some": "version"},
+				Metadata: []atc.MetadataField{{Name: "some", Value: "metadata"}},
+			}
 	})
 
 	AfterEach(func() {
@@ -133,6 +142,8 @@ var _ = Describe("PutStep", func() {
 			ID:  atc.PlanID(planID),
 			Put: putPlan,
 		}
+
+		fakeClient.RunPutStepReturns(versionResult, clientErr)
 
 		putStep = exec.NewPutStep(
 			plan.ID,
@@ -164,6 +175,53 @@ var _ = Describe("PutStep", func() {
 			repo.RegisterSource("some-source", fakeSource)
 			repo.RegisterSource("some-other-source", fakeOtherSource)
 			repo.RegisterSource("some-mounted-source", fakeMountedSource)
+
+		})
+
+		FIt("finds/chooses a worker and creates a container with the correct type, session, and sources with no inputs specified (meaning it takes all artifacts)", func() {
+			Expect(fakeClient.RunPutStepCallCount()).To(Equal(1))
+			_, _, actualOwner, actualContainerSpec, actualWorkerSpec, _, _, strategy, _, actualImageFetcherSpec, _, _, _ := fakeClient.RunPutStepArgsForCall(0)
+
+			Expect(actualOwner).To(Equal(db.NewBuildStepContainerOwner(42, atc.PlanID(planID), 123)))
+			Expect(actualContainerSpec.ImageSpec).To(Equal(worker.ImageSpec{
+				ResourceType: "some-resource-type",
+			}))
+			Expect(actualContainerSpec.Tags).To(Equal([]string{"some", "tags"}))
+			Expect(actualContainerSpec.TeamID).To(Equal(123))
+			Expect(actualContainerSpec.Env).To(Equal(stepMetadata.Env()))
+			Expect(actualContainerSpec.Dir).To(Equal("/tmp/build/put"))
+			Expect(actualContainerSpec.Inputs).To(HaveLen(3))
+			Expect(actualWorkerSpec).To(Equal(worker.WorkerSpec{
+				TeamID:        123,
+				Tags:          []string{"some", "tags"},
+				ResourceType:  "some-resource-type",
+				ResourceTypes: interpolatedResourceTypes,
+			}))
+			Expect(strategy).To(Equal(fakeStrategy))
+
+			// _, _, delegate, owner, actualContainerMetadata, containerSpec, actualResourceTypes := fakeWorker.FindOrCreateContainerArgsForCall(0)
+			// Expect(owner).To(Equal(db.NewBuildStepContainerOwner(42, atc.PlanID(planID), 123)))
+			// Expect(actualContainerMetadata).To(Equal(containerMetadata))
+			// Expect(containerSpec.ImageSpec).To(Equal(worker.ImageSpec{
+			// 	ResourceType: "some-resource-type",
+			// }))
+			// Expect(containerSpec.Tags).To(Equal([]string{"some", "tags"}))
+			// Expect(containerSpec.TeamID).To(Equal(123))
+			// Expect(containerSpec.Env).To(Equal(stepMetadata.Env()))
+			// Expect(containerSpec.Dir).To(Equal("/tmp/build/put"))
+			// Expect(containerSpec.Inputs).To(HaveLen(3))
+
+			Expect([]worker.ArtifactSource{
+				actualContainerSpec.Inputs[0].Source(),
+				actualContainerSpec.Inputs[1].Source(),
+				actualContainerSpec.Inputs[2].Source(),
+			}).To(ConsistOf(
+				exec.PutResourceSource{fakeSource},
+				exec.PutResourceSource{fakeOtherSource},
+				exec.PutResourceSource{fakeMountedSource},
+			))
+			Expect(actualImageFetcherSpec.ResourceTypes).To(Equal(interpolatedResourceTypes))
+			Expect(actualImageFetcherSpec.Delegate).To(Equal(fakeDelegate))
 		})
 
 		Context("when the tracker can initialize the resource", func() {
@@ -191,50 +249,6 @@ var _ = Describe("PutStep", func() {
 				fakeResourceFactory.NewResourceForContainerReturns(fakeResource)
 			})
 
-			//It("finds/chooses a worker and creates a container with the correct type, session, and sources with no inputs specified (meaning it takes all artifacts)", func() {
-			//	Expect(fakePool.FindOrChooseWorkerForContainerCallCount()).To(Equal(1))
-			//	_, _, actualOwner, actualContainerSpec, actualWorkerSpec, strategy := fakePool.FindOrChooseWorkerForContainerArgsForCall(0)
-			//	Expect(actualOwner).To(Equal(db.NewBuildStepContainerOwner(42, atc.PlanID(planID), 123)))
-			//	Expect(actualContainerSpec.ImageSpec).To(Equal(worker.ImageSpec{
-			//		ResourceType: "some-resource-type",
-			//	}))
-			//	Expect(actualContainerSpec.Tags).To(Equal([]string{"some", "tags"}))
-			//	Expect(actualContainerSpec.TeamID).To(Equal(123))
-			//	Expect(actualContainerSpec.Env).To(Equal(stepMetadata.Env()))
-			//	Expect(actualContainerSpec.Dir).To(Equal("/tmp/build/put"))
-			//	Expect(actualContainerSpec.Inputs).To(HaveLen(3))
-			//	Expect(actualWorkerSpec).To(Equal(worker.WorkerSpec{
-			//		TeamID:        123,
-			//		Tags:          []string{"some", "tags"},
-			//		ResourceType:  "some-resource-type",
-			//		ResourceTypes: interpolatedResourceTypes,
-			//	}))
-			//	Expect(strategy).To(Equal(fakeStrategy))
-			//
-			//	_, _, delegate, owner, actualContainerMetadata, containerSpec, actualResourceTypes := fakeWorker.FindOrCreateContainerArgsForCall(0)
-			//	Expect(owner).To(Equal(db.NewBuildStepContainerOwner(42, atc.PlanID(planID), 123)))
-			//	Expect(actualContainerMetadata).To(Equal(containerMetadata))
-			//	Expect(containerSpec.ImageSpec).To(Equal(worker.ImageSpec{
-			//		ResourceType: "some-resource-type",
-			//	}))
-			//	Expect(containerSpec.Tags).To(Equal([]string{"some", "tags"}))
-			//	Expect(containerSpec.TeamID).To(Equal(123))
-			//	Expect(containerSpec.Env).To(Equal(stepMetadata.Env()))
-			//	Expect(containerSpec.Dir).To(Equal("/tmp/build/put"))
-			//	Expect(containerSpec.Inputs).To(HaveLen(3))
-			//
-			//	Expect([]worker.ArtifactSource{
-			//		containerSpec.Inputs[0].Source(),
-			//		containerSpec.Inputs[1].Source(),
-			//		containerSpec.Inputs[2].Source(),
-			//	}).To(ConsistOf(
-			//		exec.PutResourceSource{fakeSource},
-			//		exec.PutResourceSource{fakeOtherSource},
-			//		exec.PutResourceSource{fakeMountedSource},
-			//	))
-			//	Expect(actualResourceTypes).To(Equal(interpolatedResourceTypes))
-			//	Expect(delegate).To(Equal(fakeDelegate))
-			//})
 
 			It("secrets are tracked", func() {
 				mapit := vars.NewMapCredVarsTrackerIterator()
@@ -250,8 +264,8 @@ var _ = Describe("PutStep", func() {
 					}
 				})
 
-				It("initializes the container with specified inputs", func() {
-					_, _, _, _, _, containerSpec, _ := fakeWorker.FindOrCreateContainerArgsForCall(0)
+				It("calls RunPutStep with specified inputs", func() {
+					_, _, _, containerSpec, _, _, _, _, _, _, _, _, _ := fakeClient.RunPutStepArgsForCall(0)
 					Expect(containerSpec.Inputs).To(HaveLen(2))
 					Expect([]worker.ArtifactSource{
 						containerSpec.Inputs[0].Source(),
@@ -263,31 +277,31 @@ var _ = Describe("PutStep", func() {
 				})
 			})
 
-			It("puts the resource with the given context", func() {
-				Expect(fakeResource.PutCallCount()).To(Equal(1))
-				putCtx, _, _, _ := fakeResource.PutArgsForCall(0)
-				Expect(putCtx).To(Equal(ctx))
-			})
+			// It("puts the resource with the given context", func() {
+			// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
+			// 	putCtx, _, _, _ := fakeResource.PutArgsForCall(0)
+			// 	Expect(putCtx).To(Equal(ctx))
+			// })
 
-			It("puts the resource with the correct source and params", func() {
-				Expect(fakeResource.PutCallCount()).To(Equal(1))
+			// It("puts the resource with the correct source and params", func() {
+			// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
+			//
+			// 	_, _, putSource, putParams := fakeResource.PutArgsForCall(0)
+			// 	Expect(putSource).To(Equal(atc.Source{"some": "super-secret-source"}))
+			// 	Expect(putParams).To(Equal(atc.Params{"some-param": "some-value"}))
+			// })
 
-				_, _, putSource, putParams := fakeResource.PutArgsForCall(0)
-				Expect(putSource).To(Equal(atc.Source{"some": "super-secret-source"}))
-				Expect(putParams).To(Equal(atc.Params{"some-param": "some-value"}))
-			})
+			// It("puts the resource with the io config forwarded", func() {
+			// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
+			//
+			// 	_, ioConfig, _, _ := fakeResource.PutArgsForCall(0)
+			// 	Expect(ioConfig.Stdout).To(Equal(stdoutBuf))
+			// 	Expect(ioConfig.Stderr).To(Equal(stderrBuf))
+			// })
 
-			It("puts the resource with the io config forwarded", func() {
-				Expect(fakeResource.PutCallCount()).To(Equal(1))
-
-				_, ioConfig, _, _ := fakeResource.PutArgsForCall(0)
-				Expect(ioConfig.Stdout).To(Equal(stdoutBuf))
-				Expect(ioConfig.Stderr).To(Equal(stderrBuf))
-			})
-
-			It("runs the get resource action", func() {
-				Expect(fakeResource.PutCallCount()).To(Equal(1))
-			})
+			// It("runs the get resource action", func() {
+			// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
+			// })
 
 			It("is successful", func() {
 				Expect(putStep.Succeeded()).To(BeTrue())
@@ -328,21 +342,42 @@ var _ = Describe("PutStep", func() {
 				Expect(info.Metadata).To(Equal([]atc.MetadataField{{Name: "some", Value: "metadata"}}))
 			})
 
-			It("stores the version info as the step result", func() {
+			It("stores the version result as the step result", func() {
 				Expect(state.StoreResultCallCount()).To(Equal(1))
 				sID, sVal := state.StoreResultArgsForCall(0)
 				Expect(sID).To(Equal(planID))
-				Expect(sVal).To(Equal(exec.VersionInfo{
-					Version:  atc.Version{"some": "version"},
-					Metadata: []atc.MetadataField{{Name: "some", Value: "metadata"}},
-				}))
+				Expect(sVal).To(Equal(versionResult))
 			})
 
-			Context("when performing the put exits unsuccessfully", func() {
+			// Context("when performing the put exits unsuccessfully", func() {
+			// 	BeforeEach(func() {
+			// 		fakeResource.PutReturns(runtime.VersionResult{}, resource.ErrResourceScriptFailed{
+			// 			ExitStatus: 42,
+			// 		})
+			// 	})
+			//
+			// 	It("finishes the step via the delegate", func() {
+			// 		Expect(fakeDelegate.FinishedCallCount()).To(Equal(1))
+			// 		_, status, info := fakeDelegate.FinishedArgsForCall(0)
+			// 		Expect(status).To(Equal(exec.ExitStatus(42)))
+			// 		Expect(info).To(BeZero())
+			// 	})
+			//
+			// 	It("returns nil", func() {
+			// 		Expect(stepErr).ToNot(HaveOccurred())
+			// 	})
+			//
+			// 	It("is not successful", func() {
+			// 		Expect(putStep.Succeeded()).To(BeFalse())
+			// 	})
+			// })
+
+			Context("when RunPutStep exits unsuccessfully", func() {
 				BeforeEach(func() {
-					fakeResource.PutReturns(runtime.VersionResult{}, resource.ErrResourceScriptFailed{
+					versionResult  = runtime.VersionResult{}
+					clientErr = resource.ErrResourceScriptFailed{
 						ExitStatus: 42,
-					})
+					}
 				})
 
 				It("finishes the step via the delegate", func() {
@@ -361,11 +396,32 @@ var _ = Describe("PutStep", func() {
 				})
 			})
 
-			Context("when performing the put errors", func() {
+			// Context("when performing the put errors", func() {
+			// 	disaster := errors.New("oh no")
+			//
+			// 	BeforeEach(func() {
+			// 		fakeResource.PutReturns(runtime.VersionResult{}, disaster)
+			// 	})
+			//
+			// 	It("does not finish the step via the delegate", func() {
+			// 		Expect(fakeDelegate.FinishedCallCount()).To(Equal(0))
+			// 	})
+			//
+			// 	It("returns the error", func() {
+			// 		Expect(stepErr).To(Equal(disaster))
+			// 	})
+			//
+			// 	It("is not successful", func() {
+			// 		Expect(putStep.Succeeded()).To(BeFalse())
+			// 	})
+			// })
+
+			Context("when RunPutStep exits unsuccessfully", func() {
 				disaster := errors.New("oh no")
 
 				BeforeEach(func() {
-					fakeResource.PutReturns(runtime.VersionResult{}, disaster)
+					versionResult = runtime.VersionResult{}
+					clientErr = disaster
 				})
 
 				It("does not finish the step via the delegate", func() {
