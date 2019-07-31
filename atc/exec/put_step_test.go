@@ -178,7 +178,7 @@ var _ = Describe("PutStep", func() {
 
 		})
 
-		FIt("finds/chooses a worker and creates a container with the correct type, session, and sources with no inputs specified (meaning it takes all artifacts)", func() {
+		It("finds/chooses a worker and creates a container with the correct type, session, and sources with no inputs specified (meaning it takes all artifacts)", func() {
 			Expect(fakeClient.RunPutStepCallCount()).To(Equal(1))
 			_, _, actualOwner, actualContainerSpec, actualWorkerSpec, _, _, strategy, _, actualImageFetcherSpec, _, _, _ := fakeClient.RunPutStepArgsForCall(0)
 
