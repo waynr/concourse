@@ -974,39 +974,38 @@ var _ = Describe("Client", func() {
 		})
 	})
 
-	Describe("RunPutStep", func() {
+	FDescribe("RunPutStep", func() {
 
 		var (
-			ctx              context.Context
-			owner            db.ContainerOwner
-			containerSpec    worker.ContainerSpec
-			workerSpec       worker.WorkerSpec
-			source           atc.Source
-			params           atc.Params
-			strategy         worker.ContainerPlacementStrategy
-			metadata         db.ContainerMetadata
-			imageSpec        worker.ImageFetcherSpec
-			resourceDir      string
-			ioConfig         runtime.IOConfig
-			events           chan runtime.Event
-			fakeChosenWorker *workerfakes.FakeWorker
-			fakeStrategy     *workerfakes.FakeContainerPlacementStrategy
-			fakeDelegate	 *workerfakes.FakeImageFetchingDelegate
-			fakeResourceTypes  atc.VersionedResourceTypes
-			fakeContainer *workerfakes.FakeContainer
+			ctx               context.Context
+			cancel            func()
+			owner             db.ContainerOwner
+			containerSpec     worker.ContainerSpec
+			workerSpec        worker.WorkerSpec
+			source            atc.Source
+			params            atc.Params
+			metadata          db.ContainerMetadata
+			imageSpec         worker.ImageFetcherSpec
+			ioConfig          runtime.IOConfig
+			events            chan runtime.Event
+			fakeChosenWorker  *workerfakes.FakeWorker
+			fakeStrategy      *workerfakes.FakeContainerPlacementStrategy
+			fakeDelegate      *workerfakes.FakeImageFetchingDelegate
+			fakeResourceTypes atc.VersionedResourceTypes
+			fakeContainer     *workerfakes.FakeContainer
 
 			versionResult runtime.VersionResult
-			err error
+			status int
+			err           error
 
 			disasterErr error
-
 		)
 
 		BeforeEach(func() {
-			ctx = context.TODO()
+			ctx, cancel = context.WithCancel(context.Background())
 			owner = new(dbfakes.FakeContainerOwner)
 			containerSpec = worker.ContainerSpec{}
-			strategy = new(workerfakes.FakeContainerPlacementStrategy)
+			fakeStrategy = new(workerfakes.FakeContainerPlacementStrategy)
 			workerSpec = worker.WorkerSpec{}
 			fakeChosenWorker = new(workerfakes.FakeWorker)
 			fakeDelegate = new(workerfakes.FakeImageFetchingDelegate)
@@ -1018,10 +1017,26 @@ var _ = Describe("Client", func() {
 
 			fakeContainer = new(workerfakes.FakeContainer)
 			disasterErr = errors.New("oh no")
+			stdout := new(gbytes.Buffer)
+			stderr := new(gbytes.Buffer)
+			ioConfig = runtime.IOConfig{
+				Stderr: stderr,
+				Stdout: stdout,
+			}
+			events = make(chan runtime.Event, 1)
+
+			source = atc.Source{"some": "super-secret-source"}
+			params = atc.Params{"some-param": "some-value"}
+			fakeChosenWorker = new(workerfakes.FakeWorker)
+			fakeChosenWorker.NameReturns("some-worker")
+			fakeChosenWorker.SatisfiesReturns(true)
+			fakeChosenWorker.FindOrCreateContainerReturns(fakeContainer, nil)
+			fakePool.FindOrChooseWorkerForContainerReturns(fakeChosenWorker, nil)
+
 		})
 
 		JustBeforeEach(func() {
-			versionResult, err = client.RunPutStep(
+			result := client.RunPutStep(
 				ctx,
 				logger,
 				owner,
@@ -1029,13 +1044,16 @@ var _ = Describe("Client", func() {
 				workerSpec,
 				source,
 				params,
-				strategy,
+				fakeStrategy,
 				metadata,
 				imageSpec,
-				resourceDir,
+				"/tmp/build/put",
 				ioConfig,
 				events,
 			)
+			versionResult = result.VersionResult
+			err = result.Err
+			status = result.Status
 		})
 
 		It("finds/chooses a worker", func() {
@@ -1066,12 +1084,12 @@ var _ = Describe("Client", func() {
 
 		Context("worker selection returns an error", func() {
 			BeforeEach(func() {
-				fakePool.FindOrChooseWorkerReturns(nil, disasterErr)
+				fakePool.FindOrChooseWorkerForContainerReturns(nil, disasterErr)
 			})
 
 			It("returns the error", func() {
 				Expect(err).To(HaveOccurred())
-				Expect(versionResult).To(BeEmpty())
+				Expect(versionResult).To(Equal(runtime.VersionResult{}))
 			})
 		})
 
@@ -1103,15 +1121,10 @@ var _ = Describe("Client", func() {
 				fakeProcess         *gardenfakes.FakeProcess
 				fakeProcessExitCode int
 
-				fakeVolume1 *workerfakes.FakeVolume
-				fakeVolume2 *workerfakes.FakeVolume
-				fakeVolume3 *workerfakes.FakeVolume
-
 				stdoutBuf *gbytes.Buffer
 				stderrBuf *gbytes.Buffer
 
 				fakeProcessSpec worker.ProcessSpec
-			}
 			)
 
 			BeforeEach(func() {
@@ -1133,17 +1146,20 @@ var _ = Describe("Client", func() {
 						StdoutWriter: stdoutBuf,
 						StderrWriter: stderrBuf,
 					}
+					fakeContainer.RunStub = func(arg1 context.Context, arg2 garden.ProcessSpec, arg3 garden.ProcessIO) (garden.Process, error){
+						garden.ProcessIO
+					}
 				})
 
 				It("does not send a Starting event", func() {
-					Expect(eventChan).ToNot(Receive(Equal(runtime.Event{EventType: runtime.StartingEvent, ExitStatus: 0})))
+					Expect(events).ToNot(Receive(Equal(runtime.Event{EventType: runtime.StartingEvent, ExitStatus: 0})))
 				})
 
 				It("does not create a new container", func() {
 					Expect(fakeContainer.RunCallCount()).To(BeZero())
 				})
 
-				It("attaches to the running process", func() {
+				FIt("attaches to the running process", func() {
 					Expect(err).ToNot(HaveOccurred())
 					Expect(fakeContainer.AttachCallCount()).To(Equal(1))
 					Expect(fakeContainer.RunCallCount()).To(Equal(0))
@@ -1194,54 +1210,25 @@ var _ = Describe("Client", func() {
 							Expect(err).To(Equal(context.Canceled))
 						})
 					})
-
-					Context("when 'limit-active-tasks' strategy is chosen", func() {
-						BeforeEach(func() {
-							fakeStrategy.ModifiesActiveTasksReturns(true)
-						})
-
-						It("decrements the active tasks counter on the worker", func() {
-							Expect(fakeWorker.ActiveTasks()).To(Equal(0))
-						})
-					})
 				})
 
 				Context("when the process exits successfully", func() {
+					var expectedVersionResult runtime.VersionResult
 					BeforeEach(func() {
 						fakeProcessExitCode = 0
 						fakeProcess.WaitReturns(fakeProcessExitCode, nil)
+						expectedVersionResult = runtime.VersionResult{
+							Version: atc.Version(map[string]string{"foo": "bar"}),
+							Metadata: []atc.MetadataField{},
+
+						}
 					})
 					It("returns a successful result", func() {
+						Expect(versionResult).To(Equal(expectedVersionResult))
 						Expect(status).To(BeZero())
 						Expect(err).ToNot(HaveOccurred())
 					})
 
-					It("returns all the volume mounts", func() {
-						Expect(volumeMounts).To(ConsistOf(
-							worker.VolumeMount{
-								Volume:    fakeVolume1,
-								MountPath: fakeMountPath1,
-							},
-							worker.VolumeMount{
-								Volume:    fakeVolume2,
-								MountPath: fakeMountPath2,
-							},
-							worker.VolumeMount{
-								Volume:    fakeVolume3,
-								MountPath: fakeMountPath3,
-							},
-						))
-					})
-
-					Context("when 'limit-active-tasks' strategy is chosen", func() {
-						BeforeEach(func() {
-							fakeStrategy.ModifiesActiveTasksReturns(true)
-						})
-
-						It("decrements the active tasks counter on the worker", func() {
-							Expect(fakeWorker.ActiveTasks()).To(Equal(0))
-						})
-					})
 				})
 
 				Context("when the process exits with an error", func() {
@@ -1254,20 +1241,11 @@ var _ = Describe("Client", func() {
 						Expect(status).To(Equal(fakeProcessExitCode))
 						Expect(err).To(HaveOccurred())
 						Expect(err).To(Equal(disaster))
+						Expect(versionResult).To(Equal(runtime.VersionResult{}))
 					})
 
-					It("returns no volume mounts", func() {
-						Expect(volumeMounts).To(BeEmpty())
-					})
-
-					Context("when 'limit-active-tasks' strategy is chosen", func() {
-						BeforeEach(func() {
-							fakeStrategy.ModifiesActiveTasksReturns(true)
-						})
-
-						It("decrements the active tasks counter on the worker", func() {
-							Expect(fakeWorker.ActiveTasks()).To(Equal(0))
-						})
+					It("returns no version results", func() {
+						Expect(versionResult).To(Equal(runtime.VersionResult{}))
 					})
 				})
 			})
@@ -1279,14 +1257,14 @@ var _ = Describe("Client", func() {
 
 					stdoutBuf = new(gbytes.Buffer)
 					stderrBuf = new(gbytes.Buffer)
-					fakeTaskProcessSpec = worker.ProcessSpec{
+					fakeProcessSpec = worker.ProcessSpec{
 						StdoutWriter: stdoutBuf,
 						StderrWriter: stderrBuf,
 					}
 				})
 
 				It("sends a Starting event", func() {
-					Expect(eventChan).To(Receive(Equal(runtime.Event{EventType: "Starting",ExitStatus: 0})))
+					Expect(events).To(Receive(Equal(runtime.Event{EventType: "Starting",ExitStatus: 0})))
 				})
 
 				It("runs a new process in the container", func() {
@@ -1294,9 +1272,9 @@ var _ = Describe("Client", func() {
 
 					_, gardenProcessSpec, actualProcessIO := fakeContainer.RunArgsForCall(0)
 					Expect(gardenProcessSpec.ID).To(Equal("task"))
-					Expect(gardenProcessSpec.Path).To(Equal(fakeTaskProcessSpec.Path))
-					Expect(gardenProcessSpec.Args).To(ConsistOf(fakeTaskProcessSpec.Args))
-					Expect(gardenProcessSpec.Dir).To(Equal(path.Join(fakeMetadata.WorkingDirectory, fakeTaskProcessSpec.Dir)))
+					Expect(gardenProcessSpec.Path).To(Equal(fakeProcessSpec.Path))
+					Expect(gardenProcessSpec.Args).To(ConsistOf(fakeProcessSpec.Args))
+					Expect(gardenProcessSpec.Dir).To(Equal(path.Join(metadata.WorkingDirectory, fakeProcessSpec.Dir)))
 					Expect(gardenProcessSpec.TTY).To(Equal(&garden.TTYSpec{WindowSize: &garden.WindowSize{Columns: 500, Rows: 500}}))
 					Expect(actualProcessIO.Stdout).To(Equal(stdoutBuf))
 					Expect(actualProcessIO.Stderr).To(Equal(stderrBuf))
@@ -1347,6 +1325,32 @@ var _ = Describe("Client", func() {
 				})
 
 				Context("when the process exits successfully", func() {
+
+					// It("puts the resource with the given context", func() {
+					// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
+					// 	putCtx, _, _, _ := fakeResource.PutArgsForCall(0)
+					// 	Expect(putCtx).To(Equal(ctx))
+					// })
+
+					// It("puts the resource with the correct source and params", func() {
+					// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
+					//
+					// 	_, _, putSource, putParams := fakeResource.PutArgsForCall(0)
+					// 	Expect(putSource).To(Equal(atc.Source{"some": "super-secret-source"}))
+					// 	Expect(putParams).To(Equal(atc.Params{"some-param": "some-value"}))
+					// })
+
+					// It("puts the resource with the io config forwarded", func() {
+					// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
+					//
+					// 	_, ioConfig, _, _ := fakeResource.PutArgsForCall(0)
+					// 	Expect(ioConfig.Stdout).To(Equal(stdoutBuf))
+					// 	Expect(ioConfig.Stderr).To(Equal(stderrBuf))
+					// })
+
+					// It("runs the get resource action", func() {
+					// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
+					// })
 					It("returns a successful result", func() {
 						Expect(status).To(BeZero())
 						Expect(err).ToNot(HaveOccurred())
@@ -1387,70 +1391,6 @@ var _ = Describe("Client", func() {
 
 						It("returns the error", func() {
 							Expect(err).To(Equal(disaster))
-						})
-					})
-
-					Context("when volumes are configured and present on the container", func() {
-						var (
-							fakeMountPath1 string = "some-artifact-root/some-output-configured-path/"
-							fakeMountPath2 string = "some-artifact-root/some-other-output/"
-							fakeMountPath3 string = "some-artifact-root/some-output-configured-path-with-trailing-slash/"
-
-							fakeVolume1 *workerfakes.FakeVolume
-							fakeVolume2 *workerfakes.FakeVolume
-							fakeVolume3 *workerfakes.FakeVolume
-						)
-
-						BeforeEach(func() {
-							fakeVolume1 = new(workerfakes.FakeVolume)
-							fakeVolume1.HandleReturns("some-handle-1")
-							fakeVolume2 = new(workerfakes.FakeVolume)
-							fakeVolume2.HandleReturns("some-handle-2")
-							fakeVolume3 = new(workerfakes.FakeVolume)
-							fakeVolume3.HandleReturns("some-handle-3")
-
-							fakeContainer.VolumeMountsReturns([]worker.VolumeMount{
-								worker.VolumeMount{
-									Volume:    fakeVolume1,
-									MountPath: fakeMountPath1,
-								},
-								worker.VolumeMount{
-									Volume:    fakeVolume2,
-									MountPath: fakeMountPath2,
-								},
-								worker.VolumeMount{
-									Volume:    fakeVolume3,
-									MountPath: fakeMountPath3,
-								},
-							})
-						})
-
-						It("returns all the volume mounts", func() {
-							Expect(volumeMounts).To(ConsistOf(
-								worker.VolumeMount{
-									Volume:    fakeVolume1,
-									MountPath: fakeMountPath1,
-								},
-								worker.VolumeMount{
-									Volume:    fakeVolume2,
-									MountPath: fakeMountPath2,
-								},
-								worker.VolumeMount{
-									Volume:    fakeVolume3,
-									MountPath: fakeMountPath3,
-								},
-							))
-						})
-
-					})
-
-					Context("when 'limit-active-tasks' strategy is chosen", func() {
-						BeforeEach(func() {
-							fakeStrategy.ModifiesActiveTasksReturns(true)
-						})
-
-						It("decrements the active tasks counter on the worker", func() {
-							Expect(fakeWorker.ActiveTasks()).To(Equal(0))
 						})
 					})
 				})
@@ -1502,33 +1442,6 @@ var _ = Describe("Client", func() {
 							Expect(err).To(Equal(disaster))
 						})
 					})
-
-					It("returns all the volume mounts", func() {
-						Expect(volumeMounts).To(ConsistOf(
-							worker.VolumeMount{
-								Volume:    fakeVolume1,
-								MountPath: fakeMountPath1,
-							},
-							worker.VolumeMount{
-								Volume:    fakeVolume2,
-								MountPath: fakeMountPath2,
-							},
-							worker.VolumeMount{
-								Volume:    fakeVolume3,
-								MountPath: fakeMountPath3,
-							},
-						))
-					})
-
-					Context("when 'limit-active-tasks' strategy is chosen", func() {
-						BeforeEach(func() {
-							fakeStrategy.ModifiesActiveTasksReturns(true)
-						})
-
-						It("decrements the active tasks counter on the worker", func() {
-							Expect(fakeWorker.ActiveTasks()).To(Equal(0))
-						})
-					})
 				})
 
 				Context("when running the container fails with an error", func() {
@@ -1540,16 +1453,6 @@ var _ = Describe("Client", func() {
 
 					It("returns the error", func() {
 						Expect(err).To(Equal(disaster))
-					})
-
-					Context("when 'limit-active-tasks' strategy is chosen", func() {
-						BeforeEach(func() {
-							fakeStrategy.ModifiesActiveTasksReturns(true)
-						})
-
-						It("decrements the active tasks counter on the worker", func() {
-							Expect(fakeWorker.ActiveTasks()).To(Equal(0))
-						})
 					})
 				})
 			})

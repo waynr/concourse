@@ -53,7 +53,7 @@ type Client interface {
 		string,
 		runtime.IOConfig,
 		chan runtime.Event,
-	) (runtime.VersionResult, error)
+	) PutResult
 }
 
 func NewClient(pool Pool, provider WorkerProvider) *client {
@@ -71,6 +71,12 @@ type client struct {
 type TaskResult struct {
 	Status       int
 	VolumeMounts []VolumeMount
+	Err          error
+}
+
+type PutResult struct {
+	Status       int
+	VersionResult runtime.VersionResult
 	Err          error
 }
 
@@ -399,7 +405,7 @@ func (client *client) RunPutStep(
 	resourceDir string,
 	ioConfig runtime.IOConfig,
 	events chan runtime.Event,
-) (runtime.VersionResult, error) {
+) PutResult {
 
 	vr := runtime.VersionResult{}
 
@@ -412,7 +418,7 @@ func (client *client) RunPutStep(
 		strategy,
 	)
 	if err != nil {
-		return vr, err
+		return PutResult{Status: -1, VersionResult: vr, Err: err}
 	}
 
 	container, err := chosenWorker.FindOrCreateContainer(
@@ -425,20 +431,20 @@ func (client *client) RunPutStep(
 		imageSpec.ResourceTypes,
 	)
 	if err != nil {
-		return vr, err
+		return PutResult{Status: -1, VersionResult: vr, Err: err}
 	}
 
 	// container already exited
 	exitStatusProp, err := container.Property(taskExitStatusPropertyName)
 	if err == nil {
 		logger.Info("already-exited", lager.Data{"status": exitStatusProp})
-		return vr, nil
+		return PutResult{Status: -1, VersionResult: vr, Err: nil}
 	}
 
 	//resourceDir := ResourcesDir("put")
-	events <- runtime.Event{
-		EventType: runtime.StartingEvent,
-	}
+	//events <- runtime.Event{
+	//	EventType: runtime.StartingEvent,
+	//}
 
 	err = RunScript(
 		ctx,
@@ -452,9 +458,10 @@ func (client *client) RunPutStep(
 		&vr,
 		ioConfig.Stderr,
 		true,
+		events,
 	)
 	if err != nil {
-		return vr, err
+		return PutResult{-1, runtime.VersionResult{}, err}
 	}
 
 	//putResource := step.resourceFactory.NewResourceForContainer(container)
@@ -491,10 +498,10 @@ func (client *client) RunPutStep(
 
 		<-exited
 
-		return vr, ctx.Err()
+		return PutResult{Status: -1, VersionResult: vr, Err: ctx.Err()}
 
 	case <-exited:
-
-		return vr, nil
+		// TODO: return the actual container status
+		return PutResult{Status: 0, VersionResult: vr, Err: nil}
 	}
 }

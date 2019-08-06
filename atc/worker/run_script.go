@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/concourse/concourse/atc/runtime"
 	"io"
 
 	"code.cloudfoundry.org/garden"
@@ -46,6 +47,7 @@ func RunScript(
 	output interface{},
 	logDest io.Writer,
 	recoverable bool,
+	events chan runtime.Event,
 ) error {
 	request, err := json.Marshal(input)
 	if err != nil {
@@ -78,6 +80,9 @@ func RunScript(
 	if recoverable {
 		process, err = container.Attach(ctx, ResourceProcessID, processIO)
 		if err != nil {
+			events <- runtime.Event{
+				EventType: runtime.StartingEvent,
+			}
 			process, err = container.Run(
 				ctx,
 				garden.ProcessSpec{
@@ -90,6 +95,9 @@ func RunScript(
 			}
 		}
 	} else {
+		events <- runtime.Event{
+			EventType: runtime.StartingEvent,
+		}
 		process, err = container.Run(
 			ctx,
 			garden.ProcessSpec{

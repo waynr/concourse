@@ -64,7 +64,7 @@ type FakeClient struct {
 		result2 bool
 		result3 error
 	}
-	RunPutStepStub        func(context.Context, lager.Logger, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, atc.Source, atc.Params, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, string, runtime.IOConfig, chan runtime.Event) (runtime.VersionResult, error)
+	RunPutStepStub        func(context.Context, lager.Logger, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, atc.Source, atc.Params, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, string, runtime.IOConfig, chan runtime.Event) worker.PutResult
 	runPutStepMutex       sync.RWMutex
 	runPutStepArgsForCall []struct {
 		arg1  context.Context
@@ -82,12 +82,10 @@ type FakeClient struct {
 		arg13 chan runtime.Event
 	}
 	runPutStepReturns struct {
-		result1 runtime.VersionResult
-		result2 error
+		result1 worker.PutResult
 	}
 	runPutStepReturnsOnCall map[int]struct {
-		result1 runtime.VersionResult
-		result2 error
+		result1 worker.PutResult
 	}
 	RunTaskStepStub        func(context.Context, lager.Logger, lock.LockFactory, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, worker.ProcessSpec, chan runtime.Event) worker.TaskResult
 	runTaskStepMutex       sync.RWMutex
@@ -316,7 +314,7 @@ func (fake *FakeClient) FindVolumeReturnsOnCall(i int, result1 worker.Volume, re
 	}{result1, result2, result3}
 }
 
-func (fake *FakeClient) RunPutStep(arg1 context.Context, arg2 lager.Logger, arg3 db.ContainerOwner, arg4 worker.ContainerSpec, arg5 worker.WorkerSpec, arg6 atc.Source, arg7 atc.Params, arg8 worker.ContainerPlacementStrategy, arg9 db.ContainerMetadata, arg10 worker.ImageFetcherSpec, arg11 string, arg12 runtime.IOConfig, arg13 chan runtime.Event) (runtime.VersionResult, error) {
+func (fake *FakeClient) RunPutStep(arg1 context.Context, arg2 lager.Logger, arg3 db.ContainerOwner, arg4 worker.ContainerSpec, arg5 worker.WorkerSpec, arg6 atc.Source, arg7 atc.Params, arg8 worker.ContainerPlacementStrategy, arg9 db.ContainerMetadata, arg10 worker.ImageFetcherSpec, arg11 string, arg12 runtime.IOConfig, arg13 chan runtime.Event) worker.PutResult {
 	fake.runPutStepMutex.Lock()
 	ret, specificReturn := fake.runPutStepReturnsOnCall[len(fake.runPutStepArgsForCall)]
 	fake.runPutStepArgsForCall = append(fake.runPutStepArgsForCall, struct {
@@ -340,10 +338,10 @@ func (fake *FakeClient) RunPutStep(arg1 context.Context, arg2 lager.Logger, arg3
 		return fake.RunPutStepStub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13)
 	}
 	if specificReturn {
-		return ret.result1, ret.result2
+		return ret.result1
 	}
 	fakeReturns := fake.runPutStepReturns
-	return fakeReturns.result1, fakeReturns.result2
+	return fakeReturns.result1
 }
 
 func (fake *FakeClient) RunPutStepCallCount() int {
@@ -352,7 +350,7 @@ func (fake *FakeClient) RunPutStepCallCount() int {
 	return len(fake.runPutStepArgsForCall)
 }
 
-func (fake *FakeClient) RunPutStepCalls(stub func(context.Context, lager.Logger, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, atc.Source, atc.Params, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, string, runtime.IOConfig, chan runtime.Event) (runtime.VersionResult, error)) {
+func (fake *FakeClient) RunPutStepCalls(stub func(context.Context, lager.Logger, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, atc.Source, atc.Params, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, string, runtime.IOConfig, chan runtime.Event) worker.PutResult) {
 	fake.runPutStepMutex.Lock()
 	defer fake.runPutStepMutex.Unlock()
 	fake.RunPutStepStub = stub
@@ -365,30 +363,27 @@ func (fake *FakeClient) RunPutStepArgsForCall(i int) (context.Context, lager.Log
 	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7, argsForCall.arg8, argsForCall.arg9, argsForCall.arg10, argsForCall.arg11, argsForCall.arg12, argsForCall.arg13
 }
 
-func (fake *FakeClient) RunPutStepReturns(result1 runtime.VersionResult, result2 error) {
+func (fake *FakeClient) RunPutStepReturns(result1 worker.PutResult) {
 	fake.runPutStepMutex.Lock()
 	defer fake.runPutStepMutex.Unlock()
 	fake.RunPutStepStub = nil
 	fake.runPutStepReturns = struct {
-		result1 runtime.VersionResult
-		result2 error
-	}{result1, result2}
+		result1 worker.PutResult
+	}{result1}
 }
 
-func (fake *FakeClient) RunPutStepReturnsOnCall(i int, result1 runtime.VersionResult, result2 error) {
+func (fake *FakeClient) RunPutStepReturnsOnCall(i int, result1 worker.PutResult) {
 	fake.runPutStepMutex.Lock()
 	defer fake.runPutStepMutex.Unlock()
 	fake.RunPutStepStub = nil
 	if fake.runPutStepReturnsOnCall == nil {
 		fake.runPutStepReturnsOnCall = make(map[int]struct {
-			result1 runtime.VersionResult
-			result2 error
+			result1 worker.PutResult
 		})
 	}
 	fake.runPutStepReturnsOnCall[i] = struct {
-		result1 runtime.VersionResult
-		result2 error
-	}{result1, result2}
+		result1 worker.PutResult
+	}{result1}
 }
 
 func (fake *FakeClient) RunTaskStep(arg1 context.Context, arg2 lager.Logger, arg3 lock.LockFactory, arg4 db.ContainerOwner, arg5 worker.ContainerSpec, arg6 worker.WorkerSpec, arg7 worker.ContainerPlacementStrategy, arg8 db.ContainerMetadata, arg9 worker.ImageFetcherSpec, arg10 worker.ProcessSpec, arg11 chan runtime.Event) worker.TaskResult {
