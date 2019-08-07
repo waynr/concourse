@@ -974,7 +974,7 @@ var _ = Describe("Client", func() {
 		})
 	})
 
-	FDescribe("RunPutStep", func() {
+	Describe("RunPutStep", func() {
 
 		var (
 			ctx               context.Context
@@ -986,13 +986,13 @@ var _ = Describe("Client", func() {
 			params            atc.Params
 			metadata          db.ContainerMetadata
 			imageSpec         worker.ImageFetcherSpec
-			ioConfig          runtime.IOConfig
 			events            chan runtime.Event
 			fakeChosenWorker  *workerfakes.FakeWorker
 			fakeStrategy      *workerfakes.FakeContainerPlacementStrategy
 			fakeDelegate      *workerfakes.FakeImageFetchingDelegate
 			fakeResourceTypes atc.VersionedResourceTypes
 			fakeContainer     *workerfakes.FakeContainer
+			fakeProcessSpec	  worker.ProcessSpec
 
 			versionResult runtime.VersionResult
 			status int
@@ -1019,9 +1019,10 @@ var _ = Describe("Client", func() {
 			disasterErr = errors.New("oh no")
 			stdout := new(gbytes.Buffer)
 			stderr := new(gbytes.Buffer)
-			ioConfig = runtime.IOConfig{
-				Stderr: stderr,
-				Stdout: stdout,
+				fakeProcessSpec = worker.ProcessSpec{
+				Path: "/opt/resource/out",
+				StdoutWriter: stdout,
+				StderrWriter: stderr,
 			}
 			events = make(chan runtime.Event, 1)
 
@@ -1048,7 +1049,7 @@ var _ = Describe("Client", func() {
 				metadata,
 				imageSpec,
 				"/tmp/build/put",
-				ioConfig,
+				fakeProcessSpec,
 				events,
 			)
 			versionResult = result.VersionResult
@@ -1089,6 +1090,7 @@ var _ = Describe("Client", func() {
 
 			It("returns the error", func() {
 				Expect(err).To(HaveOccurred())
+				Expect(err).To(Equal(disasterErr))
 				Expect(versionResult).To(Equal(runtime.VersionResult{}))
 			})
 		})
@@ -1124,30 +1126,25 @@ var _ = Describe("Client", func() {
 				stdoutBuf *gbytes.Buffer
 				stderrBuf *gbytes.Buffer
 
-				fakeProcessSpec worker.ProcessSpec
 			)
 
 			BeforeEach(func() {
-				fakeProcessSpec = worker.ProcessSpec{
-					StdoutWriter: stdoutBuf,
-					StderrWriter: stderrBuf,
-				}
+				stdoutBuf = new(gbytes.Buffer)
+				stderrBuf = new(gbytes.Buffer)
 				fakeProcess = new(gardenfakes.FakeProcess)
 				fakeContainer.PropertyReturns("", errors.New("not exited"))
 			})
 
 			Context("found container that is already running", func() {
+				var expectedVersionResult runtime.VersionResult
 				BeforeEach(func() {
-					fakeContainer.AttachReturns(fakeProcess, nil)
-
-					stdoutBuf = new(gbytes.Buffer)
-					stderrBuf = new(gbytes.Buffer)
-					fakeProcessSpec = worker.ProcessSpec{
-						StdoutWriter: stdoutBuf,
-						StderrWriter: stderrBuf,
+					fakeContainer.AttachStub = func(arg1 context.Context, arg2 string, arg3 garden.ProcessIO) (garden.Process, error){
+						_, _ = arg3.Stdout.Write([]byte(`{"version": { "foo": "bar" }}`))
+						return fakeProcess, nil
 					}
-					fakeContainer.RunStub = func(arg1 context.Context, arg2 garden.ProcessSpec, arg3 garden.ProcessIO) (garden.Process, error){
-						garden.ProcessIO
+					expectedVersionResult = runtime.VersionResult{
+						Version: atc.Version(map[string]string{"foo": "bar"}),
+						Metadata: nil,
 					}
 				})
 
@@ -1159,12 +1156,11 @@ var _ = Describe("Client", func() {
 					Expect(fakeContainer.RunCallCount()).To(BeZero())
 				})
 
-				FIt("attaches to the running process", func() {
+				It("attaches to the running process", func() {
 					Expect(err).ToNot(HaveOccurred())
 					Expect(fakeContainer.AttachCallCount()).To(Equal(1))
 					Expect(fakeContainer.RunCallCount()).To(Equal(0))
 					_, _, actualProcessIO := fakeContainer.AttachArgsForCall(0)
-					Expect(actualProcessIO.Stdout).To(Equal(stdoutBuf))
 					Expect(actualProcessIO.Stderr).To(Equal(stderrBuf))
 				})
 
@@ -1213,15 +1209,9 @@ var _ = Describe("Client", func() {
 				})
 
 				Context("when the process exits successfully", func() {
-					var expectedVersionResult runtime.VersionResult
 					BeforeEach(func() {
 						fakeProcessExitCode = 0
 						fakeProcess.WaitReturns(fakeProcessExitCode, nil)
-						expectedVersionResult = runtime.VersionResult{
-							Version: atc.Version(map[string]string{"foo": "bar"}),
-							Metadata: []atc.MetadataField{},
-
-						}
 					})
 					It("returns a successful result", func() {
 						Expect(versionResult).To(Equal(expectedVersionResult))
@@ -1238,9 +1228,26 @@ var _ = Describe("Client", func() {
 						fakeProcess.WaitReturns(fakeProcessExitCode, disaster)
 					})
 					It("returns an unsuccessful result", func() {
-						Expect(status).To(Equal(fakeProcessExitCode))
+						Expect(status).To(Equal(-1))
 						Expect(err).To(HaveOccurred())
 						Expect(err).To(Equal(disaster))
+						Expect(versionResult).To(Equal(runtime.VersionResult{}))
+					})
+
+					It("returns no version results", func() {
+						Expect(versionResult).To(Equal(runtime.VersionResult{}))
+					})
+				})
+
+				Context("when the process exits with nonzero status", func() {
+					BeforeEach(func() {
+						fakeProcessExitCode = 128 + 15
+						fakeProcess.WaitReturns(fakeProcessExitCode, nil)
+					})
+					It("returns an unsuccessful result", func() {
+						Expect(status).To(Equal(fakeProcessExitCode))
+						Expect(err).To(HaveOccurred())
+						Expect(err).To(BeAssignableToTypeOf(worker.ErrResourceScriptFailed{}))
 						Expect(versionResult).To(Equal(runtime.VersionResult{}))
 					})
 
@@ -1258,8 +1265,14 @@ var _ = Describe("Client", func() {
 					stdoutBuf = new(gbytes.Buffer)
 					stderrBuf = new(gbytes.Buffer)
 					fakeProcessSpec = worker.ProcessSpec{
+						Path: "/opt/resource/out",
+						Args: []string{"/tmp/build/put"},
 						StdoutWriter: stdoutBuf,
 						StderrWriter: stderrBuf,
+					}
+					fakeContainer.RunStub = func(arg1 context.Context, arg2 garden.ProcessSpec, arg3 garden.ProcessIO) (garden.Process, error){
+						_, _ = arg3.Stdout.Write([]byte(`{"version": { "foo": "bar" }}`))
+						return fakeProcess, nil
 					}
 				})
 
@@ -1271,12 +1284,10 @@ var _ = Describe("Client", func() {
 					Eventually(fakeContainer.RunCallCount()).Should(Equal(1))
 
 					_, gardenProcessSpec, actualProcessIO := fakeContainer.RunArgsForCall(0)
-					Expect(gardenProcessSpec.ID).To(Equal("task"))
+					Expect(gardenProcessSpec.ID).To(Equal("resource"))
 					Expect(gardenProcessSpec.Path).To(Equal(fakeProcessSpec.Path))
 					Expect(gardenProcessSpec.Args).To(ConsistOf(fakeProcessSpec.Args))
-					Expect(gardenProcessSpec.Dir).To(Equal(path.Join(metadata.WorkingDirectory, fakeProcessSpec.Dir)))
-					Expect(gardenProcessSpec.TTY).To(Equal(&garden.TTYSpec{WindowSize: &garden.WindowSize{Columns: 500, Rows: 500}}))
-					Expect(actualProcessIO.Stdout).To(Equal(stdoutBuf))
+					Expect(actualProcessIO.Stdout).To(Not(Equal(stdoutBuf)))
 					Expect(actualProcessIO.Stderr).To(Equal(stderrBuf))
 				})
 
@@ -1360,8 +1371,8 @@ var _ = Describe("Client", func() {
 						Expect(fakeContainer.SetPropertyCallCount()).To(Equal(1))
 
 						name, value := fakeContainer.SetPropertyArgsForCall(0)
-						Expect(name).To(Equal("concourse:exit-status"))
-						Expect(value).To(Equal("0"))
+						Expect(name).To(Equal("concourse:resource-result"))
+						Expect(value).To(Equal(string(`{"version": { "foo": "bar" }}`)))
 					})
 
 					Context("when saving the exit status succeeds", func() {
@@ -1381,7 +1392,7 @@ var _ = Describe("Client", func() {
 							fakeContainer.SetPropertyStub = func(name string, value string) error {
 								defer GinkgoRecover()
 
-								if name == "concourse:exit-status" {
+								if name == "concourse:resource-result" {
 									return disaster
 								}
 
@@ -1402,45 +1413,8 @@ var _ = Describe("Client", func() {
 					})
 					It("returns an unsuccessful result", func() {
 						Expect(status).To(Equal(fakeProcessExitCode))
-						Expect(err).ToNot(HaveOccurred())
-					})
-
-					It("saves the exit status property", func() {
-						Expect(fakeContainer.SetPropertyCallCount()).To(Equal(1))
-
-						name, value := fakeContainer.SetPropertyArgsForCall(0)
-						Expect(name).To(Equal("concourse:exit-status"))
-						Expect(value).To(Equal(fmt.Sprint(fakeProcessExitCode)))
-					})
-
-					Context("when saving the exit status succeeds", func() {
-						BeforeEach(func() {
-							fakeContainer.SetPropertyReturns(nil)
-						})
-
-						It("returns successfully", func() {
-							Expect(err).ToNot(HaveOccurred())
-						})
-					})
-
-					Context("when saving the exit status fails", func() {
-						disaster := errors.New("nope")
-
-						BeforeEach(func() {
-							fakeContainer.SetPropertyStub = func(name string, value string) error {
-								defer GinkgoRecover()
-
-								if name == "concourse:exit-status" {
-									return disaster
-								}
-
-								return nil
-							}
-						})
-
-						It("returns the error", func() {
-							Expect(err).To(Equal(disaster))
-						})
+						Expect(err).To(HaveOccurred())
+						Expect(err).To(BeAssignableToTypeOf(worker.ErrResourceScriptFailed{}))
 					})
 				})
 
@@ -1465,6 +1439,7 @@ var _ = Describe("Client", func() {
 
 			It("returns the error immediately", func() {
 				Expect(err).To(HaveOccurred())
+				Expect(err).To(Equal(disasterErr))
 				Expect(versionResult).To(Equal(runtime.VersionResult{}))
 			})
 		})

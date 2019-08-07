@@ -64,7 +64,7 @@ type FakeClient struct {
 		result2 bool
 		result3 error
 	}
-	RunPutStepStub        func(context.Context, lager.Logger, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, atc.Source, atc.Params, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, string, runtime.IOConfig, chan runtime.Event) worker.PutResult
+	RunPutStepStub        func(context.Context, lager.Logger, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, atc.Source, atc.Params, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, string, worker.ProcessSpec, chan runtime.Event) worker.PutResult
 	runPutStepMutex       sync.RWMutex
 	runPutStepArgsForCall []struct {
 		arg1  context.Context
@@ -78,7 +78,7 @@ type FakeClient struct {
 		arg9  db.ContainerMetadata
 		arg10 worker.ImageFetcherSpec
 		arg11 string
-		arg12 runtime.IOConfig
+		arg12 worker.ProcessSpec
 		arg13 chan runtime.Event
 	}
 	runPutStepReturns struct {
@@ -314,7 +314,7 @@ func (fake *FakeClient) FindVolumeReturnsOnCall(i int, result1 worker.Volume, re
 	}{result1, result2, result3}
 }
 
-func (fake *FakeClient) RunPutStep(arg1 context.Context, arg2 lager.Logger, arg3 db.ContainerOwner, arg4 worker.ContainerSpec, arg5 worker.WorkerSpec, arg6 atc.Source, arg7 atc.Params, arg8 worker.ContainerPlacementStrategy, arg9 db.ContainerMetadata, arg10 worker.ImageFetcherSpec, arg11 string, arg12 runtime.IOConfig, arg13 chan runtime.Event) worker.PutResult {
+func (fake *FakeClient) RunPutStep(arg1 context.Context, arg2 lager.Logger, arg3 db.ContainerOwner, arg4 worker.ContainerSpec, arg5 worker.WorkerSpec, arg6 atc.Source, arg7 atc.Params, arg8 worker.ContainerPlacementStrategy, arg9 db.ContainerMetadata, arg10 worker.ImageFetcherSpec, arg11 string, arg12 worker.ProcessSpec, arg13 chan runtime.Event) worker.PutResult {
 	fake.runPutStepMutex.Lock()
 	ret, specificReturn := fake.runPutStepReturnsOnCall[len(fake.runPutStepArgsForCall)]
 	fake.runPutStepArgsForCall = append(fake.runPutStepArgsForCall, struct {
@@ -329,7 +329,7 @@ func (fake *FakeClient) RunPutStep(arg1 context.Context, arg2 lager.Logger, arg3
 		arg9  db.ContainerMetadata
 		arg10 worker.ImageFetcherSpec
 		arg11 string
-		arg12 runtime.IOConfig
+		arg12 worker.ProcessSpec
 		arg13 chan runtime.Event
 	}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13})
 	fake.recordInvocation("RunPutStep", []interface{}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13})
@@ -350,13 +350,13 @@ func (fake *FakeClient) RunPutStepCallCount() int {
 	return len(fake.runPutStepArgsForCall)
 }
 
-func (fake *FakeClient) RunPutStepCalls(stub func(context.Context, lager.Logger, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, atc.Source, atc.Params, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, string, runtime.IOConfig, chan runtime.Event) worker.PutResult) {
+func (fake *FakeClient) RunPutStepCalls(stub func(context.Context, lager.Logger, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, atc.Source, atc.Params, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, string, worker.ProcessSpec, chan runtime.Event) worker.PutResult) {
 	fake.runPutStepMutex.Lock()
 	defer fake.runPutStepMutex.Unlock()
 	fake.RunPutStepStub = stub
 }
 
-func (fake *FakeClient) RunPutStepArgsForCall(i int) (context.Context, lager.Logger, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, atc.Source, atc.Params, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, string, runtime.IOConfig, chan runtime.Event) {
+func (fake *FakeClient) RunPutStepArgsForCall(i int) (context.Context, lager.Logger, db.ContainerOwner, worker.ContainerSpec, worker.WorkerSpec, atc.Source, atc.Params, worker.ContainerPlacementStrategy, db.ContainerMetadata, worker.ImageFetcherSpec, string, worker.ProcessSpec, chan runtime.Event) {
 	fake.runPutStepMutex.RLock()
 	defer fake.runPutStepMutex.RUnlock()
 	argsForCall := fake.runPutStepArgsForCall[i]

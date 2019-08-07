@@ -51,7 +51,7 @@ type Client interface {
 		db.ContainerMetadata,
 		ImageFetcherSpec,
 		string,
-		runtime.IOConfig,
+		ProcessSpec,
 		chan runtime.Event,
 	) PutResult
 }
@@ -75,9 +75,9 @@ type TaskResult struct {
 }
 
 type PutResult struct {
-	Status       int
+	Status        int
 	VersionResult runtime.VersionResult
-	Err          error
+	Err           error
 }
 
 type ProcessSpec struct {
@@ -403,7 +403,7 @@ func (client *client) RunPutStep(
 	metadata db.ContainerMetadata,
 	imageSpec ImageFetcherSpec,
 	resourceDir string,
-	ioConfig runtime.IOConfig,
+	spec ProcessSpec,
 	events chan runtime.Event,
 ) PutResult {
 
@@ -441,67 +441,31 @@ func (client *client) RunPutStep(
 		return PutResult{Status: -1, VersionResult: vr, Err: nil}
 	}
 
-	//resourceDir := ResourcesDir("put")
-	//events <- runtime.Event{
-	//	EventType: runtime.StartingEvent,
-	//}
-
+	var result PutResult
 	err = RunScript(
 		ctx,
 		container,
-		"/opt/resource/out",
-		[]string{resourceDir},
+		spec.Path,
+		spec.Args,
 		runtime.PutRequest{
 			Params: params,
 			Source: source,
 		},
 		&vr,
-		ioConfig.Stderr,
+		spec.StderrWriter,
 		true,
 		events,
 	)
+
 	if err != nil {
-		return PutResult{-1, runtime.VersionResult{}, err}
-	}
-
-	//putResource := step.resourceFactory.NewResourceForContainer(container)
-	//versionResult, err := putResource.Put(
-	//	ctx,
-	//	resource.IOConfig{
-	//		Stdout: step.delegate.Stdout(),
-	//		Stderr: step.delegate.Stderr(),
-	//	},
-	//	source,
-	//	params,
-	//)
-
-	//if err != nil {
-	//	logger.Error("failed-to-put-resource", err)
-	//
-	//	if err, ok := err.(resource.ErrResourceScriptFailed); ok {
-	//		imageSpec.Delegate.Finished(logger, ExitStatus(err.ExitStatus), VersionInfo{})
-	//		return nil
-	//	}
-	//
-	//	return err
-	//}
-    // return vr, nil
-
-	exited := make(chan string)
-
-	select {
-	case <-ctx.Done():
-		err = container.Stop(false)
-		if err != nil {
-			logger.Error("stopping-container", err)
+		if failErr, ok := err.(ErrResourceScriptFailed); ok {
+			result = PutResult{failErr.ExitStatus, runtime.VersionResult{}, failErr}
+		} else {
+			result = PutResult{-1, runtime.VersionResult{}, err}
 		}
-
-		<-exited
-
-		return PutResult{Status: -1, VersionResult: vr, Err: ctx.Err()}
-
-	case <-exited:
-		// TODO: return the actual container status
-		return PutResult{Status: 0, VersionResult: vr, Err: nil}
+	} else {
+		result = PutResult{0, vr, nil}
 	}
+
+	return result
 }

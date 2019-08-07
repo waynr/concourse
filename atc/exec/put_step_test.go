@@ -143,7 +143,7 @@ var _ = Describe("PutStep", func() {
 			Put: putPlan,
 		}
 
-		fakeClient.RunPutStepReturns(versionResult, clientErr)
+		fakeClient.RunPutStepReturns(worker.PutResult{Status: 0, VersionResult: versionResult, Err: clientErr})
 
 		putStep = exec.NewPutStep(
 			plan.ID,
@@ -198,18 +198,6 @@ var _ = Describe("PutStep", func() {
 				ResourceTypes: interpolatedResourceTypes,
 			}))
 			Expect(strategy).To(Equal(fakeStrategy))
-
-			// _, _, delegate, owner, actualContainerMetadata, containerSpec, actualResourceTypes := fakeWorker.FindOrCreateContainerArgsForCall(0)
-			// Expect(owner).To(Equal(db.NewBuildStepContainerOwner(42, atc.PlanID(planID), 123)))
-			// Expect(actualContainerMetadata).To(Equal(containerMetadata))
-			// Expect(containerSpec.ImageSpec).To(Equal(worker.ImageSpec{
-			// 	ResourceType: "some-resource-type",
-			// }))
-			// Expect(containerSpec.Tags).To(Equal([]string{"some", "tags"}))
-			// Expect(containerSpec.TeamID).To(Equal(123))
-			// Expect(containerSpec.Env).To(Equal(stepMetadata.Env()))
-			// Expect(containerSpec.Dir).To(Equal("/tmp/build/put"))
-			// Expect(containerSpec.Inputs).To(HaveLen(3))
 
 			Expect([]worker.ArtifactSource{
 				actualContainerSpec.Inputs[0].Source(),
@@ -277,31 +265,25 @@ var _ = Describe("PutStep", func() {
 				})
 			})
 
-			// It("puts the resource with the given context", func() {
-			// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
-			// 	putCtx, _, _, _ := fakeResource.PutArgsForCall(0)
-			// 	Expect(putCtx).To(Equal(ctx))
-			// })
+			It("calls RunPutStep with the given context", func() {
+				Expect(fakeClient.RunPutStepCallCount()).To(Equal(1))
+				putCtx, _, _, _ , _, _, _, _, _, _, _, _, _:= fakeClient.RunPutStepArgsForCall(0)
+				Expect(putCtx).To(Equal(ctx))
+			})
 
-			// It("puts the resource with the correct source and params", func() {
-			// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
-			//
-			// 	_, _, putSource, putParams := fakeResource.PutArgsForCall(0)
-			// 	Expect(putSource).To(Equal(atc.Source{"some": "super-secret-source"}))
-			// 	Expect(putParams).To(Equal(atc.Params{"some-param": "some-value"}))
-			// })
+			It("puts the resource with the correct source and params", func() {
+				Expect(fakeClient.RunPutStepCallCount()).To(Equal(1))
+				_, _, _, _ , _, putSource, putParams, _, _, _, _, _, _:= fakeClient.RunPutStepArgsForCall(0)
+				Expect(putSource).To(Equal(atc.Source{"some": "super-secret-source"}))
+				Expect(putParams).To(Equal(atc.Params{"some-param": "some-value"}))
+			})
 
-			// It("puts the resource with the io config forwarded", func() {
-			// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
-			//
-			// 	_, ioConfig, _, _ := fakeResource.PutArgsForCall(0)
-			// 	Expect(ioConfig.Stdout).To(Equal(stdoutBuf))
-			// 	Expect(ioConfig.Stderr).To(Equal(stderrBuf))
-			// })
-
-			// It("runs the get resource action", func() {
-			// 	Expect(fakeResource.PutCallCount()).To(Equal(1))
-			// })
+			It("puts the resource with the io config forwarded", func() {
+				Expect(fakeClient.RunPutStepCallCount()).To(Equal(1))
+				_, _, _, _ , _, _, _, _, _, _, _, processSpec, _:= fakeClient.RunPutStepArgsForCall(0)
+				Expect(processSpec.StdoutWriter).To(Equal(stdoutBuf))
+				Expect(processSpec.StderrWriter).To(Equal(stderrBuf))
+			})
 
 			It("is successful", func() {
 				Expect(putStep.Succeeded()).To(BeTrue())
@@ -349,29 +331,6 @@ var _ = Describe("PutStep", func() {
 				Expect(sVal).To(Equal(versionResult))
 			})
 
-			// Context("when performing the put exits unsuccessfully", func() {
-			// 	BeforeEach(func() {
-			// 		fakeResource.PutReturns(runtime.VersionResult{}, resource.ErrResourceScriptFailed{
-			// 			ExitStatus: 42,
-			// 		})
-			// 	})
-			//
-			// 	It("finishes the step via the delegate", func() {
-			// 		Expect(fakeDelegate.FinishedCallCount()).To(Equal(1))
-			// 		_, status, info := fakeDelegate.FinishedArgsForCall(0)
-			// 		Expect(status).To(Equal(exec.ExitStatus(42)))
-			// 		Expect(info).To(BeZero())
-			// 	})
-			//
-			// 	It("returns nil", func() {
-			// 		Expect(stepErr).ToNot(HaveOccurred())
-			// 	})
-			//
-			// 	It("is not successful", func() {
-			// 		Expect(putStep.Succeeded()).To(BeFalse())
-			// 	})
-			// })
-
 			Context("when RunPutStep exits unsuccessfully", func() {
 				BeforeEach(func() {
 					versionResult  = runtime.VersionResult{}
@@ -396,27 +355,7 @@ var _ = Describe("PutStep", func() {
 				})
 			})
 
-			// Context("when performing the put errors", func() {
-			// 	disaster := errors.New("oh no")
-			//
-			// 	BeforeEach(func() {
-			// 		fakeResource.PutReturns(runtime.VersionResult{}, disaster)
-			// 	})
-			//
-			// 	It("does not finish the step via the delegate", func() {
-			// 		Expect(fakeDelegate.FinishedCallCount()).To(Equal(0))
-			// 	})
-			//
-			// 	It("returns the error", func() {
-			// 		Expect(stepErr).To(Equal(disaster))
-			// 	})
-			//
-			// 	It("is not successful", func() {
-			// 		Expect(putStep.Succeeded()).To(BeFalse())
-			// 	})
-			// })
-
-			Context("when RunPutStep exits unsuccessfully", func() {
+			Context("when RunPutStep exits with an error", func() {
 				disaster := errors.New("oh no")
 
 				BeforeEach(func() {
@@ -437,30 +376,5 @@ var _ = Describe("PutStep", func() {
 				})
 			})
 		})
-
-		//Context("when find or choosing a worker fails", func() {
-		//	disaster := errors.New("nope")
-		//
-		//	BeforeEach(func() {
-		//		fakePool.FindOrChooseWorkerForContainerReturns(nil, disaster)
-		//	})
-		//
-		//	It("returns the failure", func() {
-		//		Expect(stepErr).To(Equal(disaster))
-		//	})
-		//})
-
-		//Context("when find or creating a container fails", func() {
-		//	disaster := errors.New("nope")
-		//
-		//	BeforeEach(func() {
-		//		fakePool.FindOrChooseWorkerForContainerReturns(fakeWorker, nil)
-		//		fakeWorker.FindOrCreateContainerReturns(nil, disaster)
-		//	})
-		//
-		//	It("returns the failure", func() {
-		//		Expect(stepErr).To(Equal(disaster))
-		//	})
-		//})
 	})
 })
