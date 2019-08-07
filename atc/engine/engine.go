@@ -10,7 +10,6 @@ import (
 	"code.cloudfoundry.org/lager/lagerctx"
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
-	"github.com/concourse/concourse/atc/db/lock"
 	"github.com/concourse/concourse/atc/exec"
 	"github.com/concourse/concourse/atc/metric"
 )
@@ -331,24 +330,10 @@ func (c *engineCheck) Run(logger lager.Logger) {
 		"check": c.check.ID(),
 	})
 
-	var (
-		lock     lock.Lock
-		acquired bool
-		err      error
-	)
-
-	for _, interval := range []time.Duration{0, 1, 2} {
-		time.Sleep(interval * time.Second)
-
-		lock, acquired, err = c.check.AcquireTrackingLock(logger)
-		if err != nil {
-			logger.Error("failed-to-get-lock", err)
-			return
-		}
-
-		if acquired {
-			break
-		}
+	lock, acquired, err := c.check.AcquireTrackingLock(logger)
+	if err != nil {
+		logger.Error("failed-to-get-lock", err)
+		return
 	}
 
 	if !acquired {

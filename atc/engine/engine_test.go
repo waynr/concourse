@@ -383,16 +383,6 @@ var _ = Describe("Engine", func() {
 				check.Run(logger)
 			})
 
-			Context("when acquiring the lock fails", func() {
-				BeforeEach(func() {
-					fakeCheck.AcquireTrackingLockReturns(nil, false, nil)
-				})
-
-				It("retries 3 times", func() {
-					Expect(fakeCheck.AcquireTrackingLockCallCount()).To(Equal(3))
-				})
-			})
-
 			Context("when acquiring the lock succeeds", func() {
 				var fakeLock *lockfakes.FakeLock
 
