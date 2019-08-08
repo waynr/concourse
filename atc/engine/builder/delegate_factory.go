@@ -88,7 +88,7 @@ func (d *getDelegate) Starting(logger lager.Logger) {
 	logger.Info("starting")
 }
 
-func (d *getDelegate) Finished(logger lager.Logger, exitStatus exec.ExitStatus, info exec.VersionInfo) {
+func (d *getDelegate) Finished(logger lager.Logger, exitStatus exec.ExitStatus, info runtime.VersionResult) {
 	err := d.build.SaveEvent(event.FinishGet{
 		Origin:          d.eventOrigin,
 		Time:            d.clock.Now().Unix(),
@@ -104,7 +104,7 @@ func (d *getDelegate) Finished(logger lager.Logger, exitStatus exec.ExitStatus, 
 	logger.Info("finished", lager.Data{"exit-status": exitStatus})
 }
 
-func (d *getDelegate) UpdateVersion(log lager.Logger, plan atc.GetPlan, info exec.VersionInfo) {
+func (d *getDelegate) UpdateVersion(log lager.Logger, plan atc.GetPlan, info runtime.VersionResult) {
 	logger := log.WithData(lager.Data{
 		"pipeline-name": d.build.PipelineName(),
 		"pipeline-id":   d.build.PipelineID()},

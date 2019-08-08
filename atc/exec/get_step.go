@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"context"
 	"fmt"
+	"github.com/concourse/concourse/atc/runtime"
 	"io"
 
 	"github.com/hashicorp/go-multierror"
@@ -43,8 +44,8 @@ type GetDelegate interface {
 
 	Initializing(lager.Logger)
 	Starting(lager.Logger)
-	Finished(lager.Logger, ExitStatus, VersionInfo)
-	UpdateVersion(lager.Logger, atc.GetPlan, VersionInfo)
+	Finished(lager.Logger, ExitStatus, runtime.VersionResult)
+	UpdateVersion(lager.Logger, atc.GetPlan, runtime.VersionResult)
 }
 
 // GetStep will fetch a version of a resource on a worker that supports the
@@ -206,7 +207,7 @@ func (step *GetStep) Run(ctx context.Context, state RunState) error {
 		logger.Error("failed-to-fetch-resource", err)
 
 		if err, ok := err.(resource.ErrResourceScriptFailed); ok {
-			step.delegate.Finished(logger, ExitStatus(err.ExitStatus), VersionInfo{})
+			step.delegate.Finished(logger, ExitStatus(err.ExitStatus), runtime.VersionResult{})
 			return nil
 		}
 
@@ -218,18 +219,18 @@ func (step *GetStep) Run(ctx context.Context, state RunState) error {
 		versionedSource:  versionedSource,
 	})
 
-	versionInfo := VersionInfo{
+	versionResult := runtime.VersionResult{
 		Version:  versionedSource.Version(),
 		Metadata: versionedSource.Metadata(),
 	}
 
 	if step.plan.Resource != "" {
-		step.delegate.UpdateVersion(logger, step.plan, versionInfo)
+		step.delegate.UpdateVersion(logger, step.plan, versionResult)
 	}
 
 	step.succeeded = true
 
-	step.delegate.Finished(logger, 0, versionInfo)
+	step.delegate.Finished(logger, 0, versionResult)
 
 	return nil
 }

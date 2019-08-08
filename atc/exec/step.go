@@ -56,13 +56,6 @@ type RunState interface {
 	StoreResult(atc.PlanID, interface{})
 }
 
-// VersionInfo is the version and metadata of a resource that was fetched or
-// produced. It is used by Put and Get.
-type VersionInfo struct {
-	Version  atc.Version
-	Metadata []atc.MetadataField
-}
-
 // ExitStatus is the resulting exit code from the process that the step ran.
 // Typically if the ExitStatus result is 0, the Success result is true.
 type ExitStatus int
