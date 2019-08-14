@@ -786,7 +786,6 @@ func (cmd *RunCommand) constructBackendMembers(
 		checkContainerStrategy,
 	)
 
-	dbCheckLifecycle := db.NewCheckLifecycle(dbConn)
 	dbBuildFactory := db.NewBuildFactory(dbConn, lockFactory, cmd.GC.OneOffBuildGracePeriod)
 	dbCheckFactory := db.NewCheckFactory(dbConn, lockFactory, secretManager, cmd.GlobalResourceCheckTimeout)
 	dbPipelineFactory := db.NewPipelineFactory(dbConn, lockFactory)
@@ -928,6 +927,7 @@ func (cmd *RunCommand) constructGCMembers(
 		"artifact-collector",
 		"volume-collector",
 		"container-collector",
+		"check-collector",
 	}
 
 	for _, name := range gcConns {
@@ -1008,6 +1008,12 @@ func (cmd *RunCommand) constructGCMembers(
 					time.Minute,
 				),
 				cmd.GC.MissingGracePeriod,
+			)
+		case "check-collector":
+			checkLifecycle := db.NewCheckLifecycle(gcConn)
+			collector = gc.NewCheckCollector(
+				checkLifecycle,
+				cmd.GC.CheckRecyclePeriod,
 			)
 		default:
 			panic("garbage collector does not exist: " + name)
