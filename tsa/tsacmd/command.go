@@ -2,6 +2,7 @@ package tsacmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/tedsuo/ifrit/http_server"
 	"github.com/tedsuo/ifrit/sigmon"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 type TSACommand struct {
@@ -98,21 +100,22 @@ func (cmd *TSACommand) Runner(args []string) (ifrit.Runner, error) {
 
 	listenAddr := fmt.Sprintf("%s:%d", cmd.BindIP, cmd.BindPort)
 
-	if cmd.SessionSigningKey == nil {
-		return nil, fmt.Errorf("missing session signing key")
+	authConfig := clientcredentials.Config{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		TokenURL:     "http://localhost:8080/sky/issuer/token",
 	}
 
-	tokenGenerator := tsa.NewTokenGenerator(cmd.SessionSigningKey.PrivateKey)
+	httpClient := authConfig.Client(context.Background())
 
 	server := &server{
 		logger:            logger,
 		heartbeatInterval: cmd.HeartbeatInterval,
 		cprInterval:       1 * time.Second,
 		atcEndpointPicker: atcEndpointPicker,
-		tokenGenerator:    tokenGenerator,
 		forwardHost:       cmd.PeerAddress,
 		config:            config,
-		httpClient:        http.DefaultClient,
+		httpClient:        httpClient,
 		sessionTeam:       sessionAuthTeam,
 	}
 

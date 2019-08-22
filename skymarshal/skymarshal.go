@@ -80,14 +80,27 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	dexServer, err := dexserver.NewDexServer(&dexserver.DexConfig{
-		Logger:       config.Logger.Session("dex"),
-		Flags:        config.Flags,
-		IssuerURL:    issuerURL,
-		WebHostURL:   issuerPath,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURL:  redirectURL,
-		Storage:      config.Storage,
+		Logger:     config.Logger.Session("dex"),
+		Flags:      config.Flags,
+		IssuerURL:  issuerURL,
+		WebHostURL: issuerPath,
+		Storage:    config.Storage,
+		Clients: []*dexserver.DexClient{
+			{
+				ClientID:     clientID,
+				ClientSecret: clientSecret,
+				RedirectURL:  redirectURL,
+			},
+			{
+				ClientID:     "fly",
+				ClientSecret: "Zmx5Cg==",
+				RedirectURL:  redirectURL,
+			},
+			{
+				ClientID:     "client-id",
+				ClientSecret: "client-secret",
+			},
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -102,7 +115,7 @@ func NewServer(config *Config) (*Server, error) {
 
 	handler := http.NewServeMux()
 	handler.Handle("/sky/issuer/", dexServer)
-	handler.Handle("/sky/", skyserver.NewSkyHandler(skyServer))
+	handler.Handle("/not-sky/", skyserver.NewSkyHandler(skyServer))
 	handler.Handle("/auth/", legacyServer)
 	handler.Handle("/login", legacyServer)
 	handler.Handle("/logout", legacyServer)

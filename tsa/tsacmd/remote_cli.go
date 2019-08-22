@@ -89,7 +89,7 @@ func (req forwardWorkerRequest) Handle(ctx context.Context, state ConnState, cha
 			},
 		}),
 		req.server.atcEndpointPicker,
-		req.server.tokenGenerator,
+		req.server.httpClient,
 		worker,
 		tsa.NewEventWriter(channel),
 	)
@@ -170,7 +170,7 @@ func (req registerWorkerRequest) Handle(ctx context.Context, state ConnState, ch
 			},
 		}),
 		req.server.atcEndpointPicker,
-		req.server.tokenGenerator,
+		req.server.httpClient,
 		worker,
 		tsa.NewEventWriter(channel),
 	)
@@ -211,8 +211,8 @@ func (req landWorkerRequest) Handle(ctx context.Context, state ConnState, channe
 	}
 
 	return (&tsa.Lander{
-		ATCEndpoint:    req.server.atcEndpointPicker.Pick(),
-		TokenGenerator: req.server.tokenGenerator,
+		ATCEndpoint: req.server.atcEndpointPicker.Pick(),
+		HttpClient:  req.server.httpClient,
 	}).Land(ctx, worker)
 }
 
@@ -232,8 +232,8 @@ func (req retireWorkerRequest) Handle(ctx context.Context, state ConnState, chan
 	}
 
 	return (&tsa.Retirer{
-		ATCEndpoint:    req.server.atcEndpointPicker.Pick(),
-		TokenGenerator: req.server.tokenGenerator,
+		ATCEndpoint: req.server.atcEndpointPicker.Pick(),
+		HttpClient:  req.server.httpClient,
 	}).Retire(ctx, worker)
 }
 
@@ -253,8 +253,8 @@ func (req deleteWorkerRequest) Handle(ctx context.Context, state ConnState, chan
 	}
 
 	return (&tsa.Deleter{
-		ATCEndpoint:    req.server.atcEndpointPicker.Pick(),
-		TokenGenerator: req.server.tokenGenerator,
+		ATCEndpoint: req.server.atcEndpointPicker.Pick(),
+		HttpClient:  req.server.httpClient,
 	}).Delete(ctx, worker)
 }
 
@@ -274,8 +274,8 @@ func (req sweepContainersRequest) Handle(ctx context.Context, state ConnState, c
 	}
 
 	sweeper := &tsa.Sweeper{
-		ATCEndpoint:    req.server.atcEndpointPicker.Pick(),
-		TokenGenerator: req.server.tokenGenerator,
+		ATCEndpoint: req.server.atcEndpointPicker.Pick(),
+		HttpClient:  req.server.httpClient,
 	}
 
 	handles, err := sweeper.Sweep(ctx, worker, tsa.SweepContainers)
@@ -309,7 +309,7 @@ func (req reportContainersRequest) Handle(ctx context.Context, state ConnState, 
 
 	return (&tsa.WorkerStatus{
 		ATCEndpoint:      req.server.atcEndpointPicker.Pick(),
-		TokenGenerator:   req.server.tokenGenerator,
+		HttpClient:       req.server.httpClient,
 		ContainerHandles: req.containerHandles,
 	}).WorkerStatus(ctx, worker, tsa.ReportContainers)
 }
@@ -330,8 +330,8 @@ func (req sweepVolumesRequest) Handle(ctx context.Context, state ConnState, chan
 	}
 
 	sweeper := &tsa.Sweeper{
-		ATCEndpoint:    req.server.atcEndpointPicker.Pick(),
-		TokenGenerator: req.server.tokenGenerator,
+		ATCEndpoint: req.server.atcEndpointPicker.Pick(),
+		HttpClient:  req.server.httpClient,
 	}
 
 	handles, err := sweeper.Sweep(ctx, worker, tsa.SweepVolumes)
@@ -364,9 +364,9 @@ func (req reportVolumesRequest) Handle(ctx context.Context, state ConnState, cha
 	}
 
 	return (&tsa.WorkerStatus{
-		ATCEndpoint:    req.server.atcEndpointPicker.Pick(),
-		TokenGenerator: req.server.tokenGenerator,
-		VolumeHandles:  req.volumeHandles,
+		ATCEndpoint:   req.server.atcEndpointPicker.Pick(),
+		HttpClient:    req.server.httpClient,
+		VolumeHandles: req.volumeHandles,
 	}).WorkerStatus(ctx, worker, tsa.ReportVolumes)
 }
 

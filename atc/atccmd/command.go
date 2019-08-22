@@ -136,7 +136,7 @@ type RunCommand struct {
 	Metrics struct {
 		HostName            string            `long:"metrics-host-name" description:"Host string to attach to emitted metrics."`
 		Attributes          map[string]string `long:"metrics-attribute" description:"A key-value attribute to attach to emitted metrics. Can be specified multiple times." value-name:"NAME:VALUE"`
-		BufferSize   	    uint32 	      `long:"metrics-buffer-size" default:"1000" description:"The size of the buffer used in emitting event metrics."`
+		BufferSize          uint32            `long:"metrics-buffer-size" default:"1000" description:"The size of the buffer used in emitting event metrics."`
 		CaptureErrorMetrics bool              `long:"capture-error-metrics" description:"Enable capturing of error log metrics"`
 	} `group:"Metrics & Diagnostics"`
 
@@ -590,7 +590,10 @@ func (cmd *RunCommand) constructAPIMembers(
 	dbContainerRepository := db.NewContainerRepository(dbConn)
 	gcContainerDestroyer := gc.NewDestroyer(logger, dbContainerRepository, dbVolumeRepository)
 	dbBuildFactory := db.NewBuildFactory(dbConn, lockFactory, cmd.GC.OneOffBuildGracePeriod)
-	accessFactory := accessor.NewAccessFactory(authHandler.PublicKey())
+
+	path, _ := url.Parse("/sky/issuer/keys")
+	target := cmd.ExternalURL.ResolveReference(path)
+	accessFactory := accessor.NewAccessFactory(target, authHandler.PublicKey())
 
 	apiHandler, err := cmd.constructAPIHandler(
 		logger,

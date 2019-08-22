@@ -14,15 +14,20 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type DexConfig struct {
-	Logger       lager.Logger
-	IssuerURL    string
-	WebHostURL   string
+type DexClient struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
-	Flags        skycmd.AuthFlags
-	Storage      s.Storage
+	Public       bool
+}
+
+type DexConfig struct {
+	Logger     lager.Logger
+	IssuerURL  string
+	WebHostURL string
+	Clients    []*DexClient
+	Flags      skycmd.AuthFlags
+	Storage    s.Storage
 }
 
 func NewDexServer(config *DexConfig) (*server.Server, error) {
@@ -71,11 +76,14 @@ func NewDexServerConfig(config *DexConfig) (server.Config, error) {
 		}
 	}
 
-	clients = append(clients, storage.Client{
-		ID:           config.ClientID,
-		Secret:       config.ClientSecret,
-		RedirectURIs: []string{config.RedirectURL},
-	})
+	for _, client := range config.Clients {
+		clients = append(clients, storage.Client{
+			ID:           client.ClientID,
+			Secret:       client.ClientSecret,
+			RedirectURIs: []string{client.RedirectURL},
+			Public:       client.Public,
+		})
+	}
 
 	if err := replacePasswords(config.Storage, passwords); err != nil {
 		return server.Config{}, err
