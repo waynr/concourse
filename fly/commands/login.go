@@ -130,11 +130,6 @@ func (command *LoginCommand) Execute(args []string) error {
 
 	fmt.Println("")
 
-	err = checkTokenTeams(tokenValue, command.TeamName)
-	if err != nil {
-		return err
-	}
-
 	return command.saveTarget(
 		client.URL(),
 		&rc.TargetToken{

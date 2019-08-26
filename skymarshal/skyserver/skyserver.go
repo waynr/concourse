@@ -17,6 +17,7 @@ import (
 	"github.com/concourse/concourse/skymarshal/token"
 	"github.com/coreos/go-oidc"
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
@@ -88,7 +89,7 @@ func (s *SkyServer) Login(w http.ResponseWriter, r *http.Request) {
 	var claims jwt.Claims
 	var result map[string]interface{}
 
-	if err = parsed.Claims(&s.config.SigningKey.PublicKey, &claims, &result); err != nil {
+	if err = parsed.UnsafeClaimsWithoutVerification(&claims, &result); err != nil {
 		logger.Error("failed-to-parse-claims", err)
 		s.NewLogin(w, r)
 		return
@@ -154,7 +155,7 @@ func (s *SkyServer) Callback(w http.ResponseWriter, r *http.Request) {
 	var (
 		err                  error
 		stateToken, authCode string
-		dexToken, skyToken   *oauth2.Token
+		dexToken             *oauth2.Token
 		verifiedClaims       *token.VerifiedClaims
 	)
 
@@ -218,19 +219,13 @@ func (s *SkyServer) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if skyToken, err = s.config.TokenIssuer.Issue(verifiedClaims); err != nil {
-		logger.Error("failed-to-issue-concourse-token", err)
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
 	if _, err = s.config.UserFactory.CreateOrUpdateUser(verifiedClaims.UserName, verifiedClaims.ConnectorID, verifiedClaims.Sub); err != nil {
 		logger.Error("failed-to-save-user-to-database", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	s.Redirect(w, r, skyToken, decode(stateToken).RedirectURI)
+	s.Redirect(w, r, dexToken, decode(stateToken).RedirectURI)
 }
 
 func (s *SkyServer) Redirect(w http.ResponseWriter, r *http.Request, token *oauth2.Token, redirectURI string) {
@@ -245,12 +240,10 @@ func (s *SkyServer) Redirect(w http.ResponseWriter, r *http.Request, token *oaut
 
 	csrfToken, ok := token.Extra("csrf").(string)
 	if !ok {
-		logger.Error("failed-to-extract-csrf-token", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		logger.Info("failed-to-extract-csrf-token")
 	}
 
-	err = s.config.TokenMiddleware.SetToken(w, token.TokenType + " " + token.AccessToken, token.Expiry)
+	err = s.config.TokenMiddleware.SetToken(w, token.TokenType+" "+token.AccessToken, token.Expiry)
 	if err != nil {
 		logger.Error("invalid-token", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -275,10 +268,9 @@ func (s *SkyServer) Token(w http.ResponseWriter, r *http.Request) {
 	logger := s.config.Logger.Session("token")
 
 	var (
-		err                error
-		grantType          string
-		dexToken, skyToken *oauth2.Token
-		verifiedClaims     *token.VerifiedClaims
+		err            error
+		dexToken       *oauth2.Token
+		verifiedClaims *token.VerifiedClaims
 	)
 
 	if r.Method != "POST" {
@@ -294,32 +286,36 @@ func (s *SkyServer) Token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if clientID != "fly" || clientSecret != "Zmx5" {
-		logger.Error("invalid-client", nil)
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	if grantType = r.FormValue("grant_type"); grantType != "password" {
-		logger.Error("invalid-grant-type", nil, lager.Data{"grant_type": grantType})
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
+	grantType := r.FormValue("grant_type")
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 	scope := r.FormValue("scope")
 
-	oauth2Config := &oauth2.Config{
-		ClientID:     s.config.DexClientID,
-		ClientSecret: s.config.DexClientSecret,
-		Endpoint:     s.endpoint(),
-		Scopes:       strings.Split(scope, "+"),
-	}
-
 	ctx := oidc.ClientContext(r.Context(), s.config.DexHTTPClient)
 
-	if dexToken, err = oauth2Config.PasswordCredentialsToken(ctx, username, password); err != nil {
+	if grantType == "client_credentials" {
+		authConfig := clientcredentials.Config{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			TokenURL:     s.endpoint().TokenURL,
+			Scopes:       strings.Split(scope, "+"),
+		}
+
+		dexToken, err = authConfig.Token(ctx)
+	}
+
+	if grantType == "password" {
+		oauth2Config := &oauth2.Config{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			Endpoint:     s.endpoint(),
+			Scopes:       strings.Split(scope, "+"),
+		}
+
+		dexToken, err = oauth2Config.PasswordCredentialsToken(ctx, username, password)
+	}
+
+	if err != nil {
 		logger.Error("failed-to-fetch-dex-token", err)
 		switch e := err.(type) {
 		case *oauth2.RetrieveError:
@@ -337,12 +333,6 @@ func (s *SkyServer) Token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if skyToken, err = s.config.TokenIssuer.Issue(verifiedClaims); err != nil {
-		logger.Error("failed-to-issue-concourse-token", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
 	if _, err = s.config.UserFactory.CreateOrUpdateUser(verifiedClaims.UserName, verifiedClaims.ConnectorID, verifiedClaims.Sub); err != nil {
 		logger.Error("failed-to-save-user-to-database", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -350,7 +340,7 @@ func (s *SkyServer) Token(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(skyToken)
+	json.NewEncoder(w).Encode(dexToken)
 }
 
 func (s *SkyServer) Logout(w http.ResponseWriter, r *http.Request) {
@@ -378,7 +368,7 @@ func (s *SkyServer) UserInfo(w http.ResponseWriter, r *http.Request) {
 	var claims jwt.Claims
 	var userInfo UserInfo
 
-	if err = parsed.Claims(&s.config.SigningKey.PublicKey, &claims, &userInfo); err != nil {
+	if err = parsed.UnsafeClaimsWithoutVerification(&claims, &userInfo); err != nil {
 		logger.Error("failed-to-parse-claims", err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
@@ -417,42 +407,4 @@ func decode(raw string) *token.StateToken {
 	return token
 }
 
-type UserInfo struct {
-	Exp      float64  `json:"exp"`
-	Sub      string   `json:"sub"`
-	UserId   string   `json:"user_id"`
-	UserName string   `json:"user_name"`
-	Name     string   `json:"name"`
-	Email    string   `json:"email"`
-	CSRF     string   `json:"csrf"`
-	IsAdmin  bool     `json:"is_admin"`
-	Teams    TeamInfo `json:"teams"`
-}
-
-type TeamInfo map[string]interface{}
-
-func (t *TeamInfo) UnmarshalJSON(b []byte) error {
-
-	var result interface{}
-	err := json.Unmarshal(b, &result)
-	if err != nil {
-		return err
-	}
-
-	info := TeamInfo{}
-	switch val := result.(type) {
-	case []interface{}:
-		for _, team := range val {
-			info[team.(string)] = []string{"owner"}
-		}
-	case map[string]interface{}:
-		for team, roles := range val {
-			info[team] = roles
-		}
-	default:
-		return errors.New("Unsupported teams type")
-	}
-
-	*t = info
-	return nil
-}
+type UserInfo map[string]interface{}

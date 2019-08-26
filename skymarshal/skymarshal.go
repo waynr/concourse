@@ -115,7 +115,7 @@ func NewServer(config *Config) (*Server, error) {
 
 	handler := http.NewServeMux()
 	handler.Handle("/sky/issuer/", dexServer)
-	handler.Handle("/not-sky/", skyserver.NewSkyHandler(skyServer))
+	handler.Handle("/sky/", skyserver.NewSkyHandler(skyServer))
 	handler.Handle("/auth/", legacyServer)
 	handler.Handle("/login", legacyServer)
 	handler.Handle("/logout", legacyServer)

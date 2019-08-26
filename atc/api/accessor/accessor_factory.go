@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/concourse/concourse/atc/db"
 	jwt "github.com/dgrijalva/jwt-go"
 	"gopkg.in/square/go-jose.v2"
 )
@@ -20,14 +21,16 @@ type AccessFactory interface {
 }
 
 type accessFactory struct {
-	target    *url.URL
-	publicKey *rsa.PublicKey
+	target      *url.URL
+	publicKey   *rsa.PublicKey
+	teamFactory db.TeamFactory
 }
 
-func NewAccessFactory(target *url.URL, key *rsa.PublicKey) AccessFactory {
+func NewAccessFactory(target *url.URL, key *rsa.PublicKey, teamFactory db.TeamFactory) AccessFactory {
 	factory := &accessFactory{
-		target:    target,
-		publicKey: key,
+		target:      target,
+		publicKey:   key,
+		teamFactory: teamFactory,
 	}
 
 	go factory.tick(time.Minute)
@@ -39,24 +42,19 @@ func (a *accessFactory) Create(r *http.Request, action string) Access {
 
 	header := r.Header.Get("Authorization")
 	if header == "" {
-		return &access{nil, action}
+		return &access{nil, action, a.teamFactory}
 	}
-
-	fmt.Println("^^^^^^^^^^^^^^^^^^^^^^^^^^^ header", header)
 
 	if len(header) < 7 || strings.ToUpper(header[0:6]) != "BEARER" {
-		return &access{&jwt.Token{}, action}
+		return &access{&jwt.Token{}, action, a.teamFactory}
 	}
-
-	fmt.Println("^^^^^^^^^^^^^^^^^^^^^^^^^^^ pk", a.publicKey)
 
 	token, err := jwt.Parse(header[7:], a.validate)
 	if err != nil {
-		return &access{&jwt.Token{}, action}
+		return &access{&jwt.Token{}, action, a.teamFactory}
 	}
 
-	fmt.Println("^^^^^^^^^^^^^^^^^^^^^^^^^^^ token", token)
-	return &access{token, action}
+	return &access{token, action, a.teamFactory}
 }
 
 func (a *accessFactory) validate(token *jwt.Token) (interface{}, error) {
@@ -65,7 +63,6 @@ func (a *accessFactory) validate(token *jwt.Token) (interface{}, error) {
 		return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 	}
 
-	fmt.Println("+++++++++++++++++++++++++++ validate", a.publicKey)
 	return a.publicKey, nil
 }
 
@@ -79,7 +76,6 @@ func (a *accessFactory) tick(interval time.Duration) {
 		if err := a.refresh(); err != nil {
 			fmt.Println("+++++++++++++++++++++++++++", err)
 		}
-
 	}
 }
 

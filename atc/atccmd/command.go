@@ -591,9 +591,13 @@ func (cmd *RunCommand) constructAPIMembers(
 	gcContainerDestroyer := gc.NewDestroyer(logger, dbContainerRepository, dbVolumeRepository)
 	dbBuildFactory := db.NewBuildFactory(dbConn, lockFactory, cmd.GC.OneOffBuildGracePeriod)
 
-	path, _ := url.Parse("/sky/issuer/keys")
-	target := cmd.ExternalURL.ResolveReference(path)
-	accessFactory := accessor.NewAccessFactory(target, authHandler.PublicKey())
+	keysPath, _ := url.Parse("/sky/issuer/keys")
+
+	accessFactory := accessor.NewAccessFactory(
+		cmd.ExternalURL.ResolveReference(keysPath),
+		authHandler.PublicKey(),
+		teamFactory,
+	)
 
 	apiHandler, err := cmd.constructAPIHandler(
 		logger,

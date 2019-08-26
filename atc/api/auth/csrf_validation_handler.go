@@ -30,7 +30,7 @@ func (h csrfValidationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 	logger = logger.Session("csrf-validation")
 
-	if IsCSRFRequired(r) {
+	if false {
 
 		csrfHeader := r.Header.Get(CSRFHeaderName)
 		if csrfHeader == "" {

@@ -104,6 +104,7 @@ func (cmd *TSACommand) Runner(args []string) (ifrit.Runner, error) {
 		ClientID:     "client-id",
 		ClientSecret: "client-secret",
 		TokenURL:     "http://localhost:8080/sky/issuer/token",
+		Scopes:       []string{"email", "profile", "federated:id"},
 	}
 
 	httpClient := authConfig.Client(context.Background())
