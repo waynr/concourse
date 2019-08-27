@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
+	"github.com/concourse/concourse/go-concourse/concourse"
 	"os"
 	"sort"
 	"strings"
@@ -16,8 +18,10 @@ import (
 )
 
 type VolumesCommand struct {
-	Details bool `short:"d" long:"details" description:"Print additional information for each volume"`
-	Json    bool `long:"json" description:"Print command result as JSON"`
+	Details   bool     `short:"d" long:"details" description:"Print additional information for each volume"`
+	Json      bool     `long:"json" description:"Print command result as JSON"`
+	AllTeams   bool     `short:"a" long:"all-teams" description:"Show volumes for all available teams"`
+	Teams []string `short:"n" long:"team" description:"Show volumes for the given teams"`
 }
 
 func (command *VolumesCommand) Execute([]string) error {
@@ -31,9 +35,37 @@ func (command *VolumesCommand) Execute([]string) error {
 		return err
 	}
 
-	volumes, err := target.Team().ListVolumes()
-	if err != nil {
-		return err
+	if len(command.Teams) > 0 && command.AllTeams {
+		return errors.New("Cannot specify both --all-teams and --team")
+	}
+
+	var volumes []atc.Volume
+	var teams []concourse.Team
+
+	client := target.Client()
+	if command.AllTeams {
+		atcTeams, err := client.ListTeams()
+		if err != nil {
+			return err
+		}
+		for _, atcTeam := range atcTeams {
+			teams = append(teams, client.Team(atcTeam.Name))
+		}
+	} else if len(command.Teams) > 0 {
+		for _, teamName := range command.Teams {
+			teams = append(teams, client.Team(teamName))
+		}
+
+	} else {
+		teams = append(teams, target.Team())
+	}
+
+	for _, team := range teams {
+		teamVolumes, err := team.ListVolumes()
+		if err != nil {
+			return err
+		}
+		volumes = append(volumes, teamVolumes...)
 	}
 
 	if command.Json {

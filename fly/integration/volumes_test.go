@@ -19,140 +19,63 @@ var _ = Describe("Fly CLI", func() {
 			flyCmd *exec.Cmd
 		)
 
-		BeforeEach(func() {
-			flyCmd = exec.Command(flyPath, "-t", targetName, "volumes")
-		})
-
-		Context("when volumes are returned from the API", func() {
-			BeforeEach(func() {
-				atcServer.AppendHandlers(
-					ghttp.CombineHandlers(
-						ghttp.VerifyRequest("GET", "/api/v1/teams/main/volumes"),
-						ghttp.RespondWithJSONEncoded(200, []atc.Volume{
-							{
-								ID:              "bbbbbb",
-								WorkerName:      "cccccc",
-								Type:            "container",
-								ContainerHandle: "container-handle-b",
-								Path:            "container-path-b",
-							},
-							{
-								ID:         "aaaaaa",
-								WorkerName: "dddddd",
-								Type:       "resource",
-								ResourceType: &atc.VolumeResourceType{
-									ResourceType: &atc.VolumeResourceType{
-										BaseResourceType: &atc.VolumeBaseResourceType{
-											Name:    "base-resource-type",
-											Version: "base-resource-version",
-										},
-										Version: atc.Version{"custom": "version"},
-									},
-									Version: atc.Version{"a": "b", "c": "d"},
-								},
-							},
-							{
-								ID:         "aaabbb",
-								WorkerName: "cccccc",
-								Type:       "resource-type",
-								BaseResourceType: &atc.VolumeBaseResourceType{
-									Name:    "base-resource-type",
-									Version: "base-resource-version",
-								},
-							},
-							{
-								ID:              "eeeeee",
-								WorkerName:      "ffffff",
-								Type:            "container",
-								ContainerHandle: "container-handle-e",
-								Path:            "container-path-e",
-							},
-							{
-								ID:              "ihavenosize",
-								WorkerName:      "ffffff",
-								Type:            "container",
-								ContainerHandle: "container-handle-i",
-								Path:            "container-path-i",
-								ParentHandle:    "parent-handle-i",
-							},
-							{
-								ID:           "task-cache-id",
-								WorkerName:   "gggggg",
-								Type:         "task-cache",
-								PipelineName: "some-pipeline",
-								JobName:      "some-job",
-								StepName:     "some-step",
-							},
-						}),
-					),
-				)
-			})
-
-			It("lists them to the user, ordered by worker name and volume name", func() {
-				sess, err := gexec.Start(flyCmd, GinkgoWriter, GinkgoWriter)
-				Expect(err).NotTo(HaveOccurred())
-
-				Eventually(sess).Should(gexec.Exit(0))
-
-				Expect(sess.Out).To(PrintTable(ui.Table{
-					Headers: ui.TableRow{
-						{Contents: "handle", Color: color.New(color.Bold)},
-						{Contents: "worker", Color: color.New(color.Bold)},
-						{Contents: "type", Color: color.New(color.Bold)},
-						{Contents: "identifier", Color: color.New(color.Bold)},
+		var sampleVolumes = []atc.Volume{{
+			ID:              "bbbbbb",
+			WorkerName:      "cccccc",
+			Type:            "container",
+			ContainerHandle: "container-handle-b",
+			Path:            "container-path-b",
+		},
+			{
+				ID:         "aaaaaa",
+				WorkerName: "dddddd",
+				Type:       "resource",
+				ResourceType: &atc.VolumeResourceType{
+					ResourceType: &atc.VolumeResourceType{
+						BaseResourceType: &atc.VolumeBaseResourceType{
+							Name:    "base-resource-type",
+							Version: "base-resource-version",
+						},
+						Version: atc.Version{"custom": "version"},
 					},
-					Data: []ui.TableRow{
-						{
-							{Contents: "aaabbb"},
-							{Contents: "cccccc"},
-							{Contents: "resource-type"},
-							{Contents: "base-resource-type"},
-						},
-						{
-							{Contents: "bbbbbb"},
-							{Contents: "cccccc"},
-							{Contents: "container"},
-							{Contents: "container-handle-b"},
-						},
-						{
-							{Contents: "aaaaaa"},
-							{Contents: "dddddd"},
-							{Contents: "resource"},
-							{Contents: "a:b,c:d"},
-						},
-						{
-							{Contents: "eeeeee"},
-							{Contents: "ffffff"},
-							{Contents: "container"},
-							{Contents: "container-handle-e"},
-						},
-						{
-							{Contents: "ihavenosize"},
-							{Contents: "ffffff"},
-							{Contents: "container"},
-							{Contents: "container-handle-i"},
-						},
-						{
-							{Contents: "task-cache-id"},
-							{Contents: "gggggg"},
-							{Contents: "task-cache"},
-							{Contents: "some-pipeline/some-job/some-step"},
-						},
-					},
-				}))
-			})
+					Version: atc.Version{"a": "b", "c": "d"},
+				},
+			},
+			{
+				ID:         "aaabbb",
+				WorkerName: "cccccc",
+				Type:       "resource-type",
+				BaseResourceType: &atc.VolumeBaseResourceType{
+					Name:    "base-resource-type",
+					Version: "base-resource-version",
+				},
+			},
+			{
+				ID:              "eeeeee",
+				WorkerName:      "ffffff",
+				Type:            "container",
+				ContainerHandle: "container-handle-e",
+				Path:            "container-path-e",
+			},
+			{
+				ID:              "ihavenosize",
+				WorkerName:      "ffffff",
+				Type:            "container",
+				ContainerHandle: "container-handle-i",
+				Path:            "container-path-i",
+				ParentHandle:    "parent-handle-i",
+			},
+			{
+				ID:           "task-cache-id",
+				WorkerName:   "gggggg",
+				Type:         "task-cache",
+				PipelineName: "some-pipeline",
+				JobName:      "some-job",
+				StepName:     "some-step",
+			},
+		}
 
-			Context("when --json is given", func() {
-				BeforeEach(func() {
-					flyCmd.Args = append(flyCmd.Args, "--json")
-				})
-
-				It("prints response in json as stdout", func() {
-					sess, err := gexec.Start(flyCmd, GinkgoWriter, GinkgoWriter)
-					Expect(err).NotTo(HaveOccurred())
-
-					Eventually(sess).Should(gexec.Exit(0))
-					Expect(sess.Out.Contents()).To(MatchJSON(`[
+		var sampleVolumeJsonString = `[
               {
                 "id": "bbbbbb",
                 "worker_name": "cccccc",
@@ -250,7 +173,87 @@ var _ = Describe("Fly CLI", func() {
                 "job_name": "some-job",
                 "step_name": "some-step"
               }
-            ]`))
+            ]`
+
+		BeforeEach(func() {
+			flyCmd = exec.Command(flyPath, "-t", targetName, "volumes")
+		})
+
+		Context("when volumes are returned from the API", func() {
+			BeforeEach(func() {
+				atcServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", "/api/v1/teams/main/volumes"),
+						ghttp.RespondWithJSONEncoded(200, sampleVolumes),
+					),
+				)
+			})
+
+			It("lists them to the user, ordered by worker name and volume name", func() {
+				sess, err := gexec.Start(flyCmd, GinkgoWriter, GinkgoWriter)
+				Expect(err).NotTo(HaveOccurred())
+
+				Eventually(sess).Should(gexec.Exit(0))
+
+				Expect(sess.Out).To(PrintTable(ui.Table{
+					Headers: ui.TableRow{
+						{Contents: "handle", Color: color.New(color.Bold)},
+						{Contents: "worker", Color: color.New(color.Bold)},
+						{Contents: "type", Color: color.New(color.Bold)},
+						{Contents: "identifier", Color: color.New(color.Bold)},
+					},
+					Data: []ui.TableRow{
+						{
+							{Contents: "aaabbb"},
+							{Contents: "cccccc"},
+							{Contents: "resource-type"},
+							{Contents: "base-resource-type"},
+						},
+						{
+							{Contents: "bbbbbb"},
+							{Contents: "cccccc"},
+							{Contents: "container"},
+							{Contents: "container-handle-b"},
+						},
+						{
+							{Contents: "aaaaaa"},
+							{Contents: "dddddd"},
+							{Contents: "resource"},
+							{Contents: "a:b,c:d"},
+						},
+						{
+							{Contents: "eeeeee"},
+							{Contents: "ffffff"},
+							{Contents: "container"},
+							{Contents: "container-handle-e"},
+						},
+						{
+							{Contents: "ihavenosize"},
+							{Contents: "ffffff"},
+							{Contents: "container"},
+							{Contents: "container-handle-i"},
+						},
+						{
+							{Contents: "task-cache-id"},
+							{Contents: "gggggg"},
+							{Contents: "task-cache"},
+							{Contents: "some-pipeline/some-job/some-step"},
+						},
+					},
+				}))
+			})
+
+			Context("when --json is given", func() {
+				BeforeEach(func() {
+					flyCmd.Args = append(flyCmd.Args, "--json")
+				})
+
+				It("prints response in json as stdout", func() {
+					sess, err := gexec.Start(flyCmd, GinkgoWriter, GinkgoWriter)
+					Expect(err).NotTo(HaveOccurred())
+
+					Eventually(sess).Should(gexec.Exit(0))
+					Expect(sess.Out.Contents()).To(MatchJSON(sampleVolumeJsonString))
 				})
 			})
 
@@ -331,6 +334,86 @@ var _ = Describe("Fly CLI", func() {
 
 				Eventually(sess).Should(gexec.Exit(1))
 				Eventually(sess.Err).Should(gbytes.Say("Unexpected Response"))
+			})
+		})
+
+		Context("volumes for teams", func() {
+			var loginATCServer *ghttp.Server
+			teams := []atc.Team{
+				atc.Team{
+					ID:   1,
+					Name: "main",
+				},
+				atc.Team{
+					ID:   2,
+					Name: "other-team",
+				},
+			}
+
+			BeforeEach(func() {
+				loginATCServer = ghttp.NewServer()
+				loginATCServer.AppendHandlers(
+					infoHandler(),
+					adminTokenHandler(encodedTokenString(true)),
+					teamHandler(teams, encodedTokenString(true)),
+					infoHandler(),
+				)
+
+				flyLoginCmd := exec.Command(flyPath, "-t", "some-target", "login", "-c", loginATCServer.URL(), "-n", "main", "-u", "test", "-p", "test")
+				sess, err := gexec.Start(flyLoginCmd, GinkgoWriter, GinkgoWriter)
+				Expect(err).NotTo(HaveOccurred())
+
+				Eventually(sess).Should(gbytes.Say("logging in to team 'main'"))
+
+				<-sess.Exited
+				Expect(sess.ExitCode()).To(Equal(0))
+				Expect(sess.Out).To(gbytes.Say("target saved"))
+			})
+
+			AfterEach(func() {
+				loginATCServer.Close()
+			})
+
+			Context("using --team parameter", func() {
+				BeforeEach(func() {
+					loginATCServer.AppendHandlers(
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/api/v1/teams/other-team/volumes"),
+							ghttp.RespondWithJSONEncoded(200, sampleVolumes),
+						),
+					)
+				})
+				It("can list volumes in 'other-team'", func() {
+					flyVolumeCmd := exec.Command(flyPath, "-t", "some-target", "volumes", "--team", "other-team", "--json")
+					sess, err := gexec.Start(flyVolumeCmd, GinkgoWriter, GinkgoWriter)
+					Expect(err).NotTo(HaveOccurred())
+
+					Eventually(sess).Should(gexec.Exit(0))
+					Expect(sess.Out.Contents()).To(MatchJSON(sampleVolumeJsonString))
+				})
+			})
+			Context("using --all-teams parameter", func() {
+				BeforeEach(func() {
+					loginATCServer.AppendHandlers(
+						teamHandler(teams, encodedTokenString(true)),
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/api/v1/teams/main/volumes"),
+							ghttp.RespondWithJSONEncoded(200, sampleVolumes),
+						),
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/api/v1/teams/other-team/volumes"),
+							ghttp.RespondWithJSONEncoded(200, []atc.Volume{}),
+						),
+					)
+				})
+				It("can list all the volumes of all the teams", func() {
+					flyVolumeCmd := exec.Command(flyPath, "-t", "some-target", "volumes", "--all-teams", "--json")
+					sess, err := gexec.Start(flyVolumeCmd, GinkgoWriter, GinkgoWriter)
+					Expect(err).NotTo(HaveOccurred())
+
+					Eventually(sess).Should(gexec.Exit(0))
+					Expect(sess.Out.Contents()).To(MatchJSON(sampleVolumeJsonString))
+				})
 			})
 		})
 	})

@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -58,6 +59,43 @@ func tokenHandler() http.HandlerFunc {
 			200,
 			token(),
 		),
+	)
+}
+
+func adminTokenHandler(encodedString string) http.HandlerFunc {
+	credentials := base64.StdEncoding.EncodeToString([]byte("fly:Zmx5"))
+	return ghttp.CombineHandlers(
+		ghttp.VerifyRequest("POST", "/sky/token"),
+		ghttp.VerifyHeaderKV("Content-Type", "application/x-www-form-urlencoded"),
+		ghttp.VerifyHeaderKV("Authorization", fmt.Sprintf("Basic %s", credentials)),
+		ghttp.VerifyFormKV("grant_type", "password"),
+		ghttp.VerifyFormKV("username", "test"),
+		ghttp.VerifyFormKV("password", "test"),
+		ghttp.VerifyFormKV("scope", "openid profile email federated:id groups"),
+		ghttp.RespondWithJSONEncoded(200, map[string]string{
+			"token_type":   "Bearer",
+			"access_token": "foo." + encodedString,
+		}),
+	)
+}
+
+func encodedTokenString(isAdmin bool) string {
+	return base64.RawStdEncoding.EncodeToString([]byte(fmt.Sprintf(`{
+					"teams": {
+						"main": ["owner"],
+						"other-team": ["owner"]
+					},
+					"user_id": "test",
+					"is_admin": %t,
+					"user_name": "test"
+			}`, isAdmin)))
+}
+
+func teamHandler(teams []atc.Team, encodedString string) http.HandlerFunc {
+	return ghttp.CombineHandlers(
+		ghttp.VerifyRequest("GET", "/api/v1/teams"),
+		ghttp.VerifyHeaderKV("Authorization", "Bearer foo." + encodedString),
+		ghttp.RespondWithJSONEncoded(200, teams),
 	)
 }
 
