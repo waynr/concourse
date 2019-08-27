@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"os"
 
 	"github.com/concourse/concourse/atc"
@@ -11,7 +12,8 @@ import (
 )
 
 type PipelinesCommand struct {
-	All  bool `short:"a"  long:"all" description:"Show all pipelines"`
+	AllTeams  bool `short:"a"  long:"all-teams" description:"Show all pipelines for all available teams"`
+	Teams []string `short:"n" long:"team" description:"Show pipelines for the given teams"`
 	Json bool `long:"json" description:"Print command result as JSON"`
 }
 
@@ -26,11 +28,26 @@ func (command *PipelinesCommand) Execute([]string) error {
 		return err
 	}
 
+	if len(command.Teams) > 0 && command.AllTeams {
+		return errors.New("Cannot specify both --all-teams and --team")
+	}
+
 	var headers []string
 	var pipelines []atc.Pipeline
 
-	if command.All {
+	if command.AllTeams {
 		pipelines, err = target.Client().ListPipelines()
+		headers = []string{"name", "team", "paused", "public"}
+	} else if len(command.Teams) > 0 {
+		client := target.Client()
+		for _, teamName := range command.Teams {
+			atcTeam := client.Team(teamName)
+			teamPipelines, err := atcTeam.ListPipelines()
+			if err != nil {
+				return err
+			}
+			pipelines = append(pipelines, teamPipelines...)
+		}
 		headers = []string{"name", "team", "paused", "public"}
 	} else {
 		pipelines, err = target.Team().ListPipelines()
@@ -72,7 +89,7 @@ func (command *PipelinesCommand) Execute([]string) error {
 
 		row := ui.TableRow{}
 		row = append(row, ui.TableCell{Contents: p.Name})
-		if command.All {
+		if command.AllTeams || len(command.Teams) > 0 {
 			row = append(row, ui.TableCell{Contents: p.TeamName})
 		}
 		row = append(row, pausedColumn)

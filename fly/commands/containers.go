@@ -1,10 +1,13 @@
 package commands
 
 import (
+	"errors"
 	"os"
 	"sort"
 	"strconv"
 
+	"github.com/concourse/concourse/atc"
+	"github.com/concourse/concourse/go-concourse/concourse"
 	"github.com/concourse/concourse/fly/commands/internal/displayhelpers"
 	"github.com/concourse/concourse/fly/rc"
 	"github.com/concourse/concourse/fly/ui"
@@ -12,7 +15,9 @@ import (
 )
 
 type ContainersCommand struct {
-	Json bool `long:"json" description:"Print command result as JSON"`
+	AllTeams bool     `short:"a" long:"all-teams" description:"Show containers for all available teams"`
+	Json     bool     `long:"json" description:"Print command result as JSON"`
+	Teams    []string `short:"n" long:"team" description:"Show containers for the given teams"`
 }
 
 func (command *ContainersCommand) Execute([]string) error {
@@ -26,9 +31,40 @@ func (command *ContainersCommand) Execute([]string) error {
 		return err
 	}
 
-	containers, err := target.Team().ListContainers(map[string]string{})
-	if err != nil {
-		return err
+	if len(command.Teams) > 0 && command.AllTeams {
+		return errors.New("Cannot specify both --all-teams and --team")
+	}
+
+	var containers []atc.Container
+	var teams []concourse.Team
+	var page = concourse.Page{}
+	page.Limit = command.Count
+
+	client := target.Client()
+	if command.AllTeams {
+		atcTeams, err := client.ListTeams()
+		if err != nil {
+			return err
+		}
+		for _, atcTeam := range atcTeams {
+			teams = append(teams, client.Team(atcTeam.Name))
+		}
+	} else if len(command.Teams) > 0 {
+		for _, teamName := range command.Teams {
+			teams = append(teams, client.Team(teamName))
+		}
+
+	} else {
+		teams = append(teams, target.Team())
+	}
+
+	// this iteration may take a long time
+	for _, team := range teams {
+		teamContainers, err := team.ListContainers(map[string]string{})
+		if err != nil {
+			return err
+		}
+		containers = append(containers, teamContainers...)
 	}
 
 	if command.Json {

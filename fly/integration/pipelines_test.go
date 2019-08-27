@@ -20,8 +20,56 @@ var _ = Describe("Fly CLI", func() {
 			flyCmd *exec.Cmd
 		)
 
+		samplePipelineJsonString := `[
+                {
+                  "id": 0,
+                  "name": "pipeline-1-longer",
+                  "paused": false,
+                  "public": false,
+                  "team_name": "main"
+                },
+                {
+                  "id": 0,
+                  "name": "pipeline-2",
+                  "paused": true,
+                  "public": false,
+                  "team_name": "main"
+                },
+                {
+                  "id": 0,
+                  "name": "pipeline-3",
+                  "paused": false,
+                  "public": true,
+                  "team_name": "main"
+                },
+                {
+                  "id": 0,
+                  "name": "foreign-pipeline-1",
+                  "paused": false,
+                  "public": true,
+                  "team_name": "other"
+                },
+                {
+                  "id": 0,
+                  "name": "foreign-pipeline-2",
+                  "paused": false,
+                  "public": true,
+                  "team_name": "other"
+                }
+              ]`
+
+		samplePipelineMain := []atc.Pipeline{
+			{Name: "pipeline-1-longer", Paused: false, Public: false, TeamName: "main"},
+			{Name: "pipeline-2", Paused: true, Public: false, TeamName: "main"},
+			{Name: "pipeline-3", Paused: false, Public: true, TeamName: "main"},
+		}
+		samplePipelineOther := []atc.Pipeline{
+			{Name: "foreign-pipeline-1", Paused: false, Public: true, TeamName: "other"},
+			{Name: "foreign-pipeline-2", Paused: false, Public: true, TeamName: "other"},
+		}
+
 		Context("when pipelines are returned from the API", func() {
-			Context("when no --all flag is given", func() {
+			Context("when no --all-teams flag is given", func() {
 				BeforeEach(func() {
 					flyCmd = exec.Command(flyPath, "-t", targetName, "pipelines")
 					atcServer.AppendHandlers(
@@ -92,19 +140,13 @@ var _ = Describe("Fly CLI", func() {
 				})
 			})
 
-			Context("when --all is specified", func() {
+			Context("when --all-teams is specified", func() {
 				BeforeEach(func() {
-					flyCmd = exec.Command(flyPath, "-t", targetName, "pipelines", "--all")
+					flyCmd = exec.Command(flyPath, "-t", targetName, "pipelines", "--all-teams")
 					atcServer.AppendHandlers(
 						ghttp.CombineHandlers(
 							ghttp.VerifyRequest("GET", "/api/v1/pipelines"),
-							ghttp.RespondWithJSONEncoded(200, []atc.Pipeline{
-								{Name: "pipeline-1-longer", Paused: false, Public: false, TeamName: "main"},
-								{Name: "pipeline-2", Paused: true, Public: false, TeamName: "main"},
-								{Name: "pipeline-3", Paused: false, Public: true, TeamName: "main"},
-								{Name: "foreign-pipeline-1", Paused: false, Public: true, TeamName: "other"},
-								{Name: "foreign-pipeline-2", Paused: false, Public: true, TeamName: "other"},
-							}),
+							ghttp.RespondWithJSONEncoded(200, append(samplePipelineMain, samplePipelineOther...)),
 						),
 					)
 				})
@@ -119,43 +161,7 @@ var _ = Describe("Fly CLI", func() {
 						Expect(err).NotTo(HaveOccurred())
 
 						Eventually(sess).Should(gexec.Exit(0))
-						Expect(sess.Out.Contents()).To(MatchJSON(`[
-                {
-                  "id": 0,
-                  "name": "pipeline-1-longer",
-                  "paused": false,
-                  "public": false,
-                  "team_name": "main"
-                },
-                {
-                  "id": 0,
-                  "name": "pipeline-2",
-                  "paused": true,
-                  "public": false,
-                  "team_name": "main"
-                },
-                {
-                  "id": 0,
-                  "name": "pipeline-3",
-                  "paused": false,
-                  "public": true,
-                  "team_name": "main"
-                },
-                {
-                  "id": 0,
-                  "name": "foreign-pipeline-1",
-                  "paused": false,
-                  "public": true,
-                  "team_name": "other"
-                },
-                {
-                  "id": 0,
-                  "name": "foreign-pipeline-2",
-                  "paused": false,
-                  "public": true,
-                  "team_name": "other"
-                }
-              ]`))
+						Expect(sess.Out.Contents()).To(MatchJSON(samplePipelineJsonString))
 					})
 				})
 
@@ -226,6 +232,31 @@ var _ = Describe("Fly CLI", func() {
 
 				Eventually(sess).Should(gexec.Exit(1))
 				Eventually(sess.Err).Should(gbytes.Say("Unexpected Response"))
+			})
+		})
+
+		Context("pipelines for teams", func() {
+			Context("using --team parameter", func() {
+				BeforeEach(func() {
+					loginATCServer.AppendHandlers(
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/api/v1/teams/main/pipelines"),
+							ghttp.RespondWithJSONEncoded(200, samplePipelineMain),
+						),
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/api/v1/teams/other/pipelines"),
+							ghttp.RespondWithJSONEncoded(200, samplePipelineOther),
+						),
+					)
+				})
+				It("can list pipelines in 'main' and 'other' teams", func() {
+					flyContainerCmd := exec.Command(flyPath, "-t", "some-target", "pipelines", "--team", "main", "--team", "other", "--json")
+					sess, err := gexec.Start(flyContainerCmd, GinkgoWriter, GinkgoWriter)
+					Expect(err).NotTo(HaveOccurred())
+
+					Eventually(sess).Should(gexec.Exit(0))
+					Expect(sess.Out.Contents()).To(MatchJSON(samplePipelineJsonString))
+				})
 			})
 		})
 	})
