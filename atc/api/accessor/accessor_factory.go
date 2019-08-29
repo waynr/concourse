@@ -3,10 +3,12 @@ package accessor
 import (
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/concourse/concourse/atc/db"
@@ -21,6 +23,7 @@ type AccessFactory interface {
 }
 
 type accessFactory struct {
+	sync.Mutex
 	target      *url.URL
 	publicKey   *rsa.PublicKey
 	teamFactory db.TeamFactory
@@ -32,8 +35,6 @@ func NewAccessFactory(target *url.URL, key *rsa.PublicKey, teamFactory db.TeamFa
 		publicKey:   key,
 		teamFactory: teamFactory,
 	}
-
-	go factory.tick(time.Minute)
 
 	return factory
 }
@@ -51,7 +52,16 @@ func (a *accessFactory) Create(r *http.Request, action string) Access {
 
 	token, err := jwt.Parse(header[7:], a.validate)
 	if err != nil {
-		return &access{&jwt.Token{}, action, a.teamFactory}
+
+		err = a.refreshPublicKey()
+		if err != nil {
+			return &access{&jwt.Token{}, action, a.teamFactory}
+		}
+
+		token, err = jwt.Parse(header[7:], a.validate)
+		if err != nil {
+			return &access{&jwt.Token{}, action, a.teamFactory}
+		}
 	}
 
 	return &access{token, action, a.teamFactory}
@@ -66,43 +76,33 @@ func (a *accessFactory) validate(token *jwt.Token) (interface{}, error) {
 	return a.publicKey, nil
 }
 
-func (a *accessFactory) tick(interval time.Duration) {
+func (a *accessFactory) refreshPublicKey() error {
 
-	if err := a.refresh(); err != nil {
-		fmt.Println("+++++++++++++++++++++++++++", err)
-	}
-
-	for range time.Tick(interval) {
-		if err := a.refresh(); err != nil {
-			fmt.Println("+++++++++++++++++++++++++++", err)
-		}
-	}
-}
-
-func (a *accessFactory) refresh() error {
-
-	key, err := a.fetch()
+	key, err := a.fetchPublicKey()
 	if err != nil {
 		return err
 	}
 
-	a.publicKey = key
+	a.Lock()
+	*a.publicKey = *key
+	a.Unlock()
+
 	return nil
 }
 
-func (a *accessFactory) fetch() (*rsa.PublicKey, error) {
+func (a *accessFactory) fetchPublicKey() (*rsa.PublicKey, error) {
 
-	token, retry, err := a.attempt()
+	token, retry, err := a.tryFetchPublicKey()
 
 	for retry {
 		time.Sleep(time.Second)
-		token, retry, err = a.attempt()
+		token, retry, err = a.tryFetchPublicKey()
 	}
 
 	return token, err
 }
 
-func (a *accessFactory) attempt() (*rsa.PublicKey, bool, error) {
+func (a *accessFactory) tryFetchPublicKey() (*rsa.PublicKey, bool, error) {
 
 	resp, err := http.Get(a.target.String())
 	if err != nil {
@@ -127,5 +127,9 @@ func (a *accessFactory) attempt() (*rsa.PublicKey, bool, error) {
 		return nil, false, err
 	}
 
-	return data.Keys[0].Public().Key.(*rsa.PublicKey), false, nil
+	if len(data.Keys) > 0 {
+		return data.Keys[0].Public().Key.(*rsa.PublicKey), false, nil
+	} else {
+		return nil, false, errors.New("no keys found")
+	}
 }
