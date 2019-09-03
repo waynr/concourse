@@ -20,7 +20,6 @@ import (
 	"github.com/containerd/containerd/oci"
 	"github.com/containerd/containerd/runtime/linux/runctypes"
 	"github.com/containerd/containerd/runtime/v2/runc/options"
-	"github.com/containerd/go-cni"
 	"github.com/opencontainers/image-spec/identity"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
@@ -31,13 +30,20 @@ type Backend struct {
 	ctx context.Context
 
 	client  *containerd.Client
-	network cni.CNI
+	network Network
+
+	ociSpecOpts []oci.SpecOpts
 
 	maxUid uint32
 	maxGid uint32
 }
 
-func NewBackend(client *containerd.Client, namespace string) (*Backend, error) {
+func NewBackend(
+	client *containerd.Client,
+	namespace string,
+	ociSpecOpts []oci.SpecOpts,
+	network Network,
+) (*Backend, error) {
 	maxUid, err := defaultUIDMap.MaxValid()
 	if err != nil {
 		return nil, err
@@ -48,19 +54,13 @@ func NewBackend(client *containerd.Client, namespace string) (*Backend, error) {
 		return nil, err
 	}
 
-	network, err := cni.New(
-		cni.WithPluginDir([]string{"plugins"}),
-		cni.WithConfListFile("network.json"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Backend{
 		ctx: namespaces.WithNamespace(context.Background(), namespace),
 
 		client:  client,
 		network: network,
+
+		ociSpecOpts: ociSpecOpts,
 
 		maxUid: maxUid,
 		maxGid: maxGid,
@@ -116,29 +116,12 @@ func (backend *Backend) Create(spec garden.ContainerSpec) (garden.Container, err
 		return nil, err
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-
 	mounts := []specs.Mount{
 		{
 			Destination: "/sys/fs/cgroup",
 			Type:        "cgroup",
 			Source:      "cgroup",
 			Options:     []string{"ro", "nosuid", "noexec", "nodev"},
-		},
-		{
-			Destination: "/etc/resolv.conf",
-			Type:        "bind",
-			Source:      filepath.Join(cwd, "etc", "resolv.conf"),
-			Options:     []string{"rbind", "ro"},
-		},
-		{
-			Destination: "/etc/hosts",
-			Type:        "bind",
-			Source:      filepath.Join(cwd, "etc", "hosts"),
-			Options:     []string{"rbind", "ro"},
 		},
 	}
 
@@ -157,42 +140,49 @@ func (backend *Backend) Create(spec garden.ContainerSpec) (garden.Container, err
 		mounts = append(mounts, mount)
 	}
 
+	specOpts := []oci.SpecOpts{
+		// carry over garden defaults
+		oci.WithDefaultUnixDevices,
+		oci.WithLinuxDevice("/dev/fuse", "rwm"),
+
+		// wire up mounts
+		oci.WithMounts(mounts),
+
+		// enable user namespaces
+		// oci.WithLinuxNamespace(specs.LinuxNamespace{
+		// 	Type: specs.UserNamespace,
+		// }),
+		// withRemappedRoot(backend.maxUid, backend.maxGid),
+
+		// set handle as hostname
+		oci.WithHostname(spec.Handle),
+
+		// inherit image config
+		oci.WithImageConfig(image),
+
+		// propagate env
+		oci.WithEnv(spec.Env),
+	}
+
+	if spec.Privileged {
+		specOpts = append(specOpts,
+			// minimum required caps for running buildkit
+			oci.WithAddedCapabilities([]string{
+				"CAP_SYS_ADMIN",
+				"CAP_NET_ADMIN",
+			}),
+		)
+	}
+
+	specOpts = append(specOpts, backend.ociSpecOpts...)
+
 	cont, err := client.NewContainer(
 		ctx,
 		spec.Handle,
 		containerd.WithContainerLabels(spec.Properties),
 		// withRemappedSnapshotBase(spec.Handle, image, backend.maxUid, backend.maxGid),
 		containerd.WithNewSnapshot(spec.Handle, image),
-		containerd.WithNewSpec(
-			// carry over garden defaults
-			oci.WithDefaultUnixDevices,
-			oci.WithLinuxDevice("/dev/fuse", "rwm"),
-
-			// wire up mounts
-			oci.WithMounts(mounts),
-
-			// enable user namespaces
-			// oci.WithLinuxNamespace(specs.LinuxNamespace{
-			// 	Type: specs.UserNamespace,
-			// }),
-			// withRemappedRoot(backend.maxUid, backend.maxGid),
-
-			// set handle as hostname
-			oci.WithHostname(spec.Handle),
-
-			// inherit image config
-			oci.WithImageConfig(image),
-
-			// propagate env
-			oci.WithEnv(spec.Env),
-
-			// minimum required caps for running buildkit
-			// TODO: only if privileged
-			oci.WithAddedCapabilities([]string{
-				"CAP_SYS_ADMIN",
-				"CAP_NET_ADMIN",
-			}),
-		),
+		containerd.WithNewSpec(specOpts...),
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "new container")
@@ -203,9 +193,7 @@ func (backend *Backend) Create(spec garden.ContainerSpec) (garden.Container, err
 		return nil, errors.Wrap(err, "new task")
 	}
 
-	netNs := fmt.Sprintf("/proc/%d/ns/net", task.Pid())
-
-	_, err = backend.network.Setup(backend.ctx, cont.ID(), netNs)
+	err = backend.network.Setup(backend.ctx, task)
 	if err != nil {
 		return nil, errors.Wrap(err, "setup network")
 	}
@@ -271,7 +259,7 @@ func (backend *Backend) Destroy(handle string) error {
 		return errors.Wrap(err, "delete container")
 	}
 
-	err = backend.network.Remove(backend.ctx, cont.ID(), "")
+	err = backend.network.Teardown(backend.ctx, task)
 	if err != nil {
 		return errors.Wrap(err, "remove network")
 	}

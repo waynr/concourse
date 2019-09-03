@@ -51,9 +51,8 @@ require (
 	github.com/containerd/containerd v1.3.0-beta.2
 	github.com/containerd/continuity v0.0.0-20190815185530-f2a389ac0a02 // indirect
 	github.com/containerd/fifo v0.0.0-20190816180239-bda0ff6ed73c // indirect
-	github.com/containerd/go-cni v0.0.0-20190822145629-0d360c50b10b
 	github.com/containerd/ttrpc v0.0.0-20190828172938-92c8520ef9f8 // indirect
-	github.com/containernetworking/cni v0.7.1 // indirect
+	github.com/containernetworking/cni v0.7.1
 	github.com/coreos/bbolt v1.3.2 // indirect
 	github.com/coreos/etcd v3.3.15+incompatible // indirect
 	github.com/coreos/go-oidc v2.0.0+incompatible
