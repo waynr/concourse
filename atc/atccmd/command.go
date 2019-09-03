@@ -624,14 +624,14 @@ func (cmd *RunCommand) constructAPIMembers(
 		return nil, err
 	}
 
-	webHandler, err := webHandler(logger)
+	webHandler, err := cmd.webHandler(logger)
 	if err != nil {
 		return nil, err
 	}
 
 	var httpHandler, httpsHandler http.Handler
 	if cmd.isTLSEnabled() {
-		httpHandler = cmd.constructHTTPHandler(
+		httpHandler = cmd.constructWebHandler(
 			logger,
 
 			tlsRedirectHandler{
@@ -639,16 +639,6 @@ func (cmd *RunCommand) constructAPIMembers(
 				externalHost:  cmd.ExternalURL.URL.Host,
 				baseHandler:   webHandler,
 			},
-
-			// note: intentionally not wrapping API; redirecting is more trouble than
-			// it's worth.
-
-			// we're mainly interested in having the web UI consistently https:// -
-			// API requests will likely not respect the redirected https:// URI upon
-			// the next request, plus the payload will have already been sent in
-			// plaintext
-			apiHandler,
-
 			tlsRedirectHandler{
 				matchHostname: cmd.ExternalURL.URL.Hostname(),
 				externalHost:  cmd.ExternalURL.URL.Host,
@@ -656,17 +646,15 @@ func (cmd *RunCommand) constructAPIMembers(
 			},
 		)
 
-		httpsHandler = cmd.constructHTTPHandler(
+		httpsHandler = cmd.constructWebHandler(
 			logger,
 			webHandler,
-			apiHandler,
 			authHandler,
 		)
 	} else {
-		httpHandler = cmd.constructHTTPHandler(
+		httpHandler = cmd.constructWebHandler(
 			logger,
 			webHandler,
-			apiHandler,
 			authHandler,
 		)
 	}
@@ -680,6 +668,10 @@ func (cmd *RunCommand) constructAPIMembers(
 			cmd.nonTLSBindAddr(),
 			httpHandler,
 		)},
+		{Name: "api", Runner: http_server.New(
+			cmd.apiBindAddr(),
+			apiHandler,
+		)},
 	}
 
 	if httpsHandler != nil {
@@ -692,9 +684,43 @@ func (cmd *RunCommand) constructAPIMembers(
 			httpsHandler,
 			tlsConfig,
 		)})
+		members = append(members, grouper.Member{Name: "api-tls", Runner: http_server.NewTLSServer(
+			cmd.apiTLSBindAddr(),
+			apiHandler,
+			tlsConfig,
+		)})
 	}
 
 	return members, nil
+}
+
+func (cmd *RunCommand) constructWebHandler(
+	logger lager.Logger,
+	webHandler http.Handler,
+	authHandler http.Handler,
+) http.Handler {
+	webMux := http.NewServeMux()
+	webMux.Handle("/sky/", authHandler)
+	webMux.Handle("/auth/", authHandler)
+	webMux.Handle("/login", authHandler)
+	webMux.Handle("/logout", authHandler)
+	webMux.Handle("/", webHandler)
+
+	httpHandler := wrappa.LoggerHandler{
+		Logger: logger,
+
+		Handler: wrappa.SecurityHandler{
+			XFrameOptions: cmd.Server.XFrameOptions,
+
+			// proxy Authorization header to/from auth cookie,
+			// to support auth from JS (EventSource) and custom JWT auth
+			Handler: auth.WebAuthHandler{
+				Handler: webMux,
+			},
+		},
+	}
+
+	return httpHandler
 }
 
 func (cmd *RunCommand) constructBackendMembers(
@@ -957,11 +983,17 @@ func (cmd *RunCommand) oldKey() *encryption.Key {
 	return oldKey
 }
 
-func webHandler(logger lager.Logger) (http.Handler, error) {
-	webHandler, err := web.NewHandler(logger)
+func (cmd *RunCommand) webHandler(logger lager.Logger) (http.Handler, error) {
+	apiURL, err := cmd.apiURL()
 	if err != nil {
 		return nil, err
 	}
+
+	webHandler, err := web.NewHandler(logger, apiURL)
+	if err != nil {
+		return nil, err
+	}
+
 	return metric.WrapHandler(logger, "web", webHandler), nil
 }
 
@@ -1081,6 +1113,21 @@ func (cmd *RunCommand) DefaultURL() flag.URL {
 	}
 }
 
+func (cmd *RunCommand) APIURL() flag.URL {
+	apiURL, _ := cmd.apiURL()
+	return flag.URL{
+		URL: apiURL,
+	}
+}
+
+func (cmd *RunCommand) apiURL() (*url.URL, error) {
+	if cmd.isTLSEnabled() {
+		return url.Parse("https://" + cmd.apiTLSBindAddr())
+	} else {
+		return url.Parse("http://" + cmd.apiBindAddr())
+	}
+}
+
 func run(runner ifrit.Runner, onReady func(), onExit func()) ifrit.Runner {
 	return ifrit.RunFunc(func(signals <-chan os.Signal, ready chan<- struct{}) error {
 		process := ifrit.Background(runner)
@@ -1141,6 +1188,14 @@ func (cmd *RunCommand) validate() error {
 
 func (cmd *RunCommand) nonTLSBindAddr() string {
 	return fmt.Sprintf("%s:%d", cmd.BindIP, cmd.BindPort)
+}
+
+func (cmd *RunCommand) apiBindAddr() string {
+	return fmt.Sprintf("%s:%d", cmd.defaultBindIP(), cmd.BindPort+1)
+}
+
+func (cmd *RunCommand) apiTLSBindAddr() string {
+	return fmt.Sprintf("%s:%d", cmd.defaultBindIP(), cmd.TLSBindPort+1)
 }
 
 func (cmd *RunCommand) tlsBindAddr() string {
@@ -1283,37 +1338,6 @@ func (cmd *RunCommand) constructEngine(
 	)
 
 	return engine.NewEngine(stepBuilder)
-}
-
-func (cmd *RunCommand) constructHTTPHandler(
-	logger lager.Logger,
-	webHandler http.Handler,
-	apiHandler http.Handler,
-	authHandler http.Handler,
-) http.Handler {
-	webMux := http.NewServeMux()
-	webMux.Handle("/api/v1/", apiHandler)
-	webMux.Handle("/sky/", authHandler)
-	webMux.Handle("/auth/", authHandler)
-	webMux.Handle("/login", authHandler)
-	webMux.Handle("/logout", authHandler)
-	webMux.Handle("/", webHandler)
-
-	httpHandler := wrappa.LoggerHandler{
-		Logger: logger,
-
-		Handler: wrappa.SecurityHandler{
-			XFrameOptions: cmd.Server.XFrameOptions,
-
-			// proxy Authorization header to/from auth cookie,
-			// to support auth from JS (EventSource) and custom JWT auth
-			Handler: auth.WebAuthHandler{
-				Handler: webMux,
-			},
-		},
-	}
-
-	return httpHandler
 }
 
 func (cmd *RunCommand) constructAPIHandler(

@@ -10,12 +10,7 @@ import (
 	"code.cloudfoundry.org/lager"
 )
 
-func NewHandler(logger lager.Logger, host string) (http.Handler, error) {
-
-	targetUrl, err := url.Parse(host)
-	if err != nil {
-		return nil, err
-	}
+func NewHandler(logger lager.Logger, target *url.URL) (http.Handler, error) {
 
 	dialer := &net.Dialer{
 		Timeout:   24 * time.Hour,
@@ -28,7 +23,7 @@ func NewHandler(logger lager.Logger, host string) (http.Handler, error) {
 		TLSHandshakeTimeout: 60 * time.Second,
 	}
 
-	handler := httputil.NewSingleHostReverseProxy(targetUrl)
+	handler := httputil.NewSingleHostReverseProxy(target)
 	handler.FlushInterval = 100 * time.Millisecond
 	handler.Transport = transport
 

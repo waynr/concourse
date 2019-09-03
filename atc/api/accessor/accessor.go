@@ -46,6 +46,7 @@ func (a *access) Claims() jwt.MapClaims {
 }
 
 func (a *access) IsAuthorized(teamName string) bool {
+
 	if a.IsAdmin() {
 		return true
 	}

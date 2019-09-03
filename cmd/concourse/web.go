@@ -85,7 +85,7 @@ func (cmd *WebCommand) populateTSAFlagsFromATCFlags() error {
 	}
 
 	if len(cmd.TSACommand.ATCURLs) == 0 {
-		cmd.TSACommand.ATCURLs = []flag.URL{cmd.RunCommand.DefaultURL()}
+		cmd.TSACommand.ATCURLs = []flag.URL{cmd.RunCommand.APIURL()}
 	}
 
 	return nil
