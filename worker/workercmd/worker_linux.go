@@ -3,23 +3,21 @@ package workercmd
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"code.cloudfoundry.org/lager"
-	"code.cloudfoundry.org/localip"
 	"github.com/concourse/concourse/atc"
 	concourseCmd "github.com/concourse/concourse/cmd"
-	"github.com/concourse/flag"
+	"github.com/containerd/containerd"
 	"github.com/jessevdk/go-flags"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/grouper"
+
+	"github.com/concourse/concourse/gcontainerd"
 )
 
 type Certs struct {
@@ -29,8 +27,8 @@ type Certs struct {
 type GardenBackend struct {
 	UseHoudini bool `long:"use-houdini" description:"Use the insecure Houdini Garden backend."`
 
-	GDN          string    `long:"bin"    default:"gdn" description:"Path to 'gdn' executable (or leave as 'gdn' to find it in $PATH)."`
-	GardenConfig flag.File `long:"config"               description:"Path to a config file to use for Garden. You can also specify Garden flags as env vars, e.g. 'CONCOURSE_GARDEN_FOO_BAR=a,b' for '--foo-bar a --foo-bar b'."`
+	ContainerdSock      string `long:"containerd-sock" default:"/run/containerd/containerd.sock" description:"Path to containerd socket."`
+	ContainerdNamespace string `long:"containerd-namespace" default:"concourse" description:"Namespace in which to place all Concourse containerd stuff."`
 
 	DNS DNSConfig `group:"DNS Proxy Configuration" namespace:"dns-proxy"`
 }
@@ -67,7 +65,7 @@ func (cmd *WorkerCommand) gardenRunner(logger lager.Logger) (atc.Worker, ifrit.R
 	if cmd.Garden.UseHoudini {
 		runner, err = cmd.houdiniRunner(logger)
 	} else {
-		runner, err = cmd.gdnRunner(logger)
+		runner, err = cmd.containerdRunner(logger)
 	}
 	if err != nil {
 		return atc.Worker{}, nil, err
@@ -76,55 +74,26 @@ func (cmd *WorkerCommand) gardenRunner(logger lager.Logger) (atc.Worker, ifrit.R
 	return worker, runner, nil
 }
 
-func (cmd *WorkerCommand) gdnRunner(logger lager.Logger) (ifrit.Runner, error) {
-	if binDir := concourseCmd.DiscoverAsset("bin"); binDir != "" {
-		// ensure packaged 'gdn' executable is available in $PATH
-		err := os.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
-		if err != nil {
-			return nil, err
-		}
-	}
+func (cmd *WorkerCommand) containerdRunner(logger lager.Logger) (ifrit.Runner, error) {
+	members := grouper.Members{}
 
-	depotDir := filepath.Join(cmd.WorkDir.Path(), "depot")
-
-	// must be readable by other users so unprivileged containers can run their
-	// own `initc' process
-	err := os.MkdirAll(depotDir, 0755)
+	client, err := containerd.New(cmd.Garden.ContainerdSock)
 	if err != nil {
 		return nil, err
 	}
 
-	members := grouper.Members{}
-
-	gdnFlags := []string{}
-
-	if cmd.Garden.GardenConfig.Path() != "" {
-		gdnFlags = append(gdnFlags, "--config", cmd.Garden.GardenConfig.Path())
+	backend, err := gcontainerd.NewBackend(client, cmd.Garden.ContainerdNamespace)
+	if err != nil {
+		return nil, err
 	}
 
-	gdnServerFlags := []string{
-		"--bind-ip", cmd.BindIP.IP.String(),
-		"--bind-port", fmt.Sprintf("%d", cmd.BindPort),
-
-		"--depot", depotDir,
-		"--properties-path", filepath.Join(cmd.WorkDir.Path(), "garden-properties.json"),
-
-		"--time-format", "rfc3339",
-
-		// disable graph and grootfs setup; all images passed to Concourse
-		// containers are raw://
-		"--no-image-plugin",
-	}
-
-	gdnServerFlags = append(gdnServerFlags, detectGardenFlags(logger)...)
+	members = append(members, grouper.Member{
+		Name:   "garden-containerd",
+		Runner: cmd.backendRunner(logger, backend),
+	})
 
 	if cmd.Garden.DNS.Enable {
 		dnsProxyRunner, err := cmd.dnsProxyRunner(logger.Session("dns-proxy"))
-		if err != nil {
-			return nil, err
-		}
-
-		lip, err := localip.LocalIP()
 		if err != nil {
 			return nil, err
 		}
@@ -136,29 +105,7 @@ func (cmd *WorkerCommand) gdnRunner(logger lager.Logger) (ifrit.Runner, error) {
 				dnsProxyRunner,
 			),
 		})
-
-		gdnServerFlags = append(gdnServerFlags, "--dns-server", lip)
-
-		// must permit access to host network in order for DNS proxy address to be
-		// reachable
-		gdnServerFlags = append(gdnServerFlags, "--allow-host-access")
 	}
-
-	gdnArgs := append(gdnFlags, append([]string{"server"}, gdnServerFlags...)...)
-	gdnCmd := exec.Command(cmd.Garden.GDN, gdnArgs...)
-	gdnCmd.Stdout = os.Stdout
-	gdnCmd.Stderr = os.Stderr
-	gdnCmd.SysProcAttr = &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGKILL,
-	}
-
-	members = append(members, grouper.Member{
-		Name: "gdn",
-		Runner: concourseCmd.NewLoggingRunner(
-			logger.Session("gdn-runner"),
-			cmdRunner{gdnCmd},
-		),
-	})
 
 	return grouper.NewParallel(os.Interrupt, members), nil
 }
@@ -233,7 +180,7 @@ func (cmd *WorkerCommand) loadResources(logger lager.Logger) ([]atc.WorkerResour
 				return nil, err
 			}
 
-			t.Image = filepath.Join(basePath, e.Name(), "rootfs.tgz")
+			t.Image = filepath.Join(basePath, e.Name(), "image.tar")
 
 			types = append(types, t)
 		}

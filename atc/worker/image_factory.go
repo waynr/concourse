@@ -25,7 +25,6 @@ type ImageFactory interface {
 }
 
 type FetchedImage struct {
-	Metadata   ImageMetadata
 	Version    atc.Version
 	URL        string
 	Privileged bool
@@ -47,11 +46,6 @@ type ImageFetchingDelegate interface {
 	Stdout() io.Writer
 	Stderr() io.Writer
 	ImageVersionDetermined(db.UsedResourceCache) error
-}
-
-type ImageMetadata struct {
-	Env  []string `json:"env"`
-	User string   `json:"user"`
 }
 
 type NoopImageFetchingDelegate struct{}

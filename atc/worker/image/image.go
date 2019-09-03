@@ -13,7 +13,7 @@ import (
 	"github.com/concourse/concourse/atc/worker"
 )
 
-const RawRootFSScheme = "raw"
+const OCIRootFSScheme = "oci"
 
 type imageProvidedByPreviousStepOnSameWorker struct {
 	artifactVolume worker.Volume
@@ -43,24 +43,12 @@ func (i *imageProvidedByPreviousStepOnSameWorker) FetchForContainer(
 		return worker.FetchedImage{}, err
 	}
 
-	imageMetadataReader, err := i.imageSpec.ImageArtifactSource.StreamFile(ctx, logger, ImageMetadataFile)
-	if err != nil {
-		logger.Error("failed-to-stream-metadata-file", err)
-		return worker.FetchedImage{}, err
-	}
-
-	metadata, err := loadMetadata(imageMetadataReader)
-	if err != nil {
-		return worker.FetchedImage{}, err
-	}
-
 	imageURL := url.URL{
-		Scheme: RawRootFSScheme,
-		Path:   path.Join(imageVolume.Path(), "rootfs"),
+		Scheme: OCIRootFSScheme,
+		Path:   path.Join(imageVolume.Path(), "image.tar"),
 	}
 
 	return worker.FetchedImage{
-		Metadata:   metadata,
 		URL:        imageURL.String(),
 		Privileged: i.imageSpec.Privileged,
 	}, nil
@@ -102,24 +90,12 @@ func (i *imageProvidedByPreviousStepOnDifferentWorker) FetchForContainer(
 		return worker.FetchedImage{}, err
 	}
 
-	imageMetadataReader, err := i.imageSpec.ImageArtifactSource.StreamFile(ctx, logger, ImageMetadataFile)
-	if err != nil {
-		logger.Error("failed-to-stream-metadata-file", err)
-		return worker.FetchedImage{}, err
-	}
-
-	metadata, err := loadMetadata(imageMetadataReader)
-	if err != nil {
-		return worker.FetchedImage{}, err
-	}
-
 	imageURL := url.URL{
-		Scheme: RawRootFSScheme,
-		Path:   path.Join(imageVolume.Path(), "rootfs"),
+		Scheme: OCIRootFSScheme,
+		Path:   path.Join(imageVolume.Path(), "image.tar"),
 	}
 
 	return worker.FetchedImage{
-		Metadata:   metadata,
 		URL:        imageURL.String(),
 		Privileged: i.imageSpec.Privileged,
 	}, nil
@@ -138,7 +114,7 @@ func (i *imageFromResource) FetchForContainer(
 	logger lager.Logger,
 	container db.CreatingContainer,
 ) (worker.FetchedImage, error) {
-	imageParentVolume, imageMetadataReader, version, err := i.imageResourceFetcher.Fetch(
+	imageParentVolume, version, err := i.imageResourceFetcher.Fetch(
 		ctx,
 		logger.Session("image"),
 		container,
@@ -149,34 +125,12 @@ func (i *imageFromResource) FetchForContainer(
 		return worker.FetchedImage{}, err
 	}
 
-	imageVolume, err := i.volumeClient.FindOrCreateCOWVolumeForContainer(
-		logger.Session("create-cow-volume"),
-		worker.VolumeSpec{
-			Strategy:   imageParentVolume.COWStrategy(),
-			Privileged: i.privileged,
-		},
-		container,
-		imageParentVolume,
-		i.teamID,
-		"/",
-	)
-	if err != nil {
-		logger.Error("failed-to-create-image-resource-volume", err)
-		return worker.FetchedImage{}, err
-	}
-
-	metadata, err := loadMetadata(imageMetadataReader)
-	if err != nil {
-		return worker.FetchedImage{}, err
-	}
-
 	imageURL := url.URL{
-		Scheme: RawRootFSScheme,
-		Path:   path.Join(imageVolume.Path(), "rootfs"),
+		Scheme: OCIRootFSScheme,
+		Path:   path.Join(imageParentVolume.Path(), "image.tar"),
 	}
 
 	return worker.FetchedImage{
-		Metadata:   metadata,
 		Version:    version,
 		URL:        imageURL.String(),
 		Privileged: i.privileged,
@@ -197,41 +151,12 @@ func (i *imageFromBaseResourceType) FetchForContainer(
 ) (worker.FetchedImage, error) {
 	for _, t := range i.worker.ResourceTypes() {
 		if t.Type == i.resourceTypeName {
-			importVolume, err := i.volumeClient.FindOrCreateVolumeForBaseResourceType(
-				logger,
-				worker.VolumeSpec{
-					Strategy:   baggageclaim.ImportStrategy{Path: t.Image},
-					Privileged: t.Privileged,
-				},
-				i.teamID,
-				i.resourceTypeName,
-			)
-			if err != nil {
-				return worker.FetchedImage{}, err
-			}
-
-			cowVolume, err := i.volumeClient.FindOrCreateCOWVolumeForContainer(
-				logger,
-				worker.VolumeSpec{
-					Strategy:   importVolume.COWStrategy(),
-					Privileged: t.Privileged,
-				},
-				container,
-				importVolume,
-				i.teamID,
-				"/",
-			)
-			if err != nil {
-				return worker.FetchedImage{}, err
-			}
-
 			rootFSURL := url.URL{
-				Scheme: RawRootFSScheme,
-				Path:   cowVolume.Path(),
+				Scheme: OCIRootFSScheme,
+				Path:   t.Image,
 			}
 
 			return worker.FetchedImage{
-				Metadata:   worker.ImageMetadata{},
 				Version:    atc.Version{i.resourceTypeName: t.Version},
 				URL:        rootFSURL.String(),
 				Privileged: t.Privileged,

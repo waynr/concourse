@@ -29,11 +29,9 @@ func (w workerHelper) createGardenContainer(
 
 	if containerSpec.User != "" {
 		gardenProperties[userPropertyName] = containerSpec.User
-	} else {
-		gardenProperties[userPropertyName] = fetchedImage.Metadata.User
 	}
 
-	env := append(fetchedImage.Metadata.Env, containerSpec.Env...)
+	env := containerSpec.Env
 
 	if w.dbWorker.HTTPProxyURL() != "" {
 		env = append(env, fmt.Sprintf("http_proxy=%s", w.dbWorker.HTTPProxyURL()))
