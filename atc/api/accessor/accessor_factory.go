@@ -119,10 +119,7 @@ func (a *accessFactory) tryFetchPublicKey() (*rsa.PublicKey, bool, error) {
 		return nil, false, fmt.Errorf("client error: %v", resp.StatusCode)
 	}
 
-	var data struct {
-		Keys []jose.JSONWebKey `json:"keys"`
-	}
-
+	var data jose.JSONWebKeySet
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return nil, false, err
 	}
