@@ -133,12 +133,6 @@ func (container *container) BulkNetOut([]garden.NetOutRule) error {
 }
 
 func (container *container) Run(spec garden.ProcessSpec, processIO garden.ProcessIO) (garden.Process, error) {
-	streams := cio.WithStreams(
-		processIO.Stdin,
-		processIO.Stdout,
-		processIO.Stderr,
-	)
-
 	cwd := spec.Dir
 	if cwd == "" {
 		cwd = "/"
@@ -168,7 +162,17 @@ func (container *container) Run(spec garden.ProcessSpec, processIO garden.Proces
 		pspec.Cwd = spec.Dir
 	}
 
+	cioOpts := []cio.Opt{
+		cio.WithStreams(
+			processIO.Stdin,
+			processIO.Stdout,
+			processIO.Stderr,
+		),
+	}
+
 	if spec.TTY != nil {
+		cioOpts = append(cioOpts, cio.WithTerminal)
+
 		pspec.Terminal = true
 
 		if spec.TTY.WindowSize != nil {
@@ -189,7 +193,7 @@ func (container *container) Run(spec garden.ProcessSpec, processIO garden.Proces
 		id = uuid.String()
 	}
 
-	process, err := task.Exec(container.ctx, id, pspec, cio.NewCreator(streams))
+	process, err := task.Exec(container.ctx, id, pspec, cio.NewCreator(cioOpts...))
 	if err != nil {
 		return nil, err
 	}
