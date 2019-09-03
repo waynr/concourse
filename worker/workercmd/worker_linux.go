@@ -5,15 +5,22 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/concourse/atc"
 	concourseCmd "github.com/concourse/concourse/cmd"
+	"github.com/concourse/flag"
 	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/oci"
+	"github.com/containernetworking/cni/libcni"
 	"github.com/jessevdk/go-flags"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/grouper"
 
@@ -27,8 +34,7 @@ type Certs struct {
 type GardenBackend struct {
 	UseHoudini bool `long:"use-houdini" description:"Use the insecure Houdini Garden backend."`
 
-	ContainerdSock      string `long:"containerd-sock" default:"/run/containerd/containerd.sock" description:"Path to containerd socket."`
-	ContainerdNamespace string `long:"containerd-namespace" default:"concourse" description:"Namespace in which to place all Concourse containerd stuff."`
+	CNIPluginDir flag.Dir `long:"cni-plugin-dir" default:"/opt/cni/bin" description:"Directory containing CNI plugins."`
 
 	DNS DNSConfig `group:"DNS Proxy Configuration" namespace:"dns-proxy"`
 }
@@ -77,19 +83,42 @@ func (cmd *WorkerCommand) gardenRunner(logger lager.Logger) (atc.Worker, ifrit.R
 func (cmd *WorkerCommand) containerdRunner(logger lager.Logger) (ifrit.Runner, error) {
 	members := grouper.Members{}
 
-	client, err := containerd.New(cmd.Garden.ContainerdSock)
-	if err != nil {
-		return nil, err
+	containerdSock := filepath.Join(cmd.WorkDir.Path(), "containerd.sock")
+
+	containerdArgs := []string{
+		"--address", containerdSock,
+		"--root", filepath.Join(cmd.WorkDir.Path(), "containerd"),
 	}
 
-	backend, err := gcontainerd.NewBackend(client, cmd.Garden.ContainerdNamespace)
-	if err != nil {
-		return nil, err
+	containerdCmd := exec.Command("containerd", containerdArgs...)
+	containerdCmd.Stdout = os.Stdout
+	containerdCmd.Stderr = os.Stderr
+	containerdCmd.SysProcAttr = &syscall.SysProcAttr{
+		Pdeathsig: syscall.SIGKILL,
 	}
 
 	members = append(members, grouper.Member{
+		Name: "containerd",
+		Runner: NewLoggingRunner(
+			logger.Session("containerd-runner"),
+			cmdRunner{
+				cmd: containerdCmd,
+				check: func() error {
+					client, err := containerd.New(containerdSock)
+					if err != nil {
+						return err
+					}
+
+					client.Close()
+					return nil
+				},
+			},
+		),
+	})
+
+	members = append(members, grouper.Member{
 		Name:   "garden-containerd",
-		Runner: cmd.backendRunner(logger, backend),
+		Runner: cmd.gardenContainerdRunner(logger, containerdSock),
 	})
 
 	if cmd.Garden.DNS.Enable {
@@ -107,7 +136,59 @@ func (cmd *WorkerCommand) containerdRunner(logger lager.Logger) (ifrit.Runner, e
 		})
 	}
 
-	return grouper.NewParallel(os.Interrupt, members), nil
+	return grouper.NewOrdered(os.Interrupt, members), nil
+}
+
+func (cmd *WorkerCommand) gardenContainerdRunner(logger lager.Logger, containerdSock string) ifrit.Runner {
+	return ifrit.RunFunc(func(signals <-chan os.Signal, ready chan<- struct{}) error {
+		client, err := containerd.New(containerdSock, containerd.WithTimeout(time.Minute))
+		if err != nil {
+			return err
+		}
+
+		etcResolvconfFile := filepath.Join(cmd.WorkDir.Path(), "resolv.conf")
+		err = ioutil.WriteFile(etcResolvconfFile, []byte(etcResolvconf), 0600)
+		if err != nil {
+			return err
+		}
+
+		etcHostsFile := filepath.Join(cmd.WorkDir.Path(), "hosts")
+		err = ioutil.WriteFile(etcHostsFile, []byte(etcHosts), 0600)
+		if err != nil {
+			return err
+		}
+
+		ociOpts := []oci.SpecOpts{
+			oci.WithMounts([]specs.Mount{
+				{
+					Destination: "/etc/resolv.conf",
+					Type:        "bind",
+					Source:      etcResolvconfFile,
+					Options:     []string{"rbind", "ro"},
+				},
+				{
+					Destination: "/etc/hosts",
+					Type:        "bind",
+					Source:      etcHostsFile,
+					Options:     []string{"rbind", "ro"},
+				},
+			}),
+		}
+
+		networkConf, err := libcni.ConfListFromBytes([]byte(cniNetworkList))
+		if err != nil {
+			return err
+		}
+
+		networkCacheDir := filepath.Join(cmd.WorkDir.Path(), "network")
+		network := gcontainerd.NewCNINetwork(networkConf, cmd.Garden.CNIPluginDir.Path(), networkCacheDir)
+		backend, err := gcontainerd.NewBackend(client, "concourse", ociOpts, network)
+		if err != nil {
+			return err
+		}
+
+		return cmd.backendRunner(logger, backend).Run(signals, ready)
+	})
 }
 
 var ErrNotRoot = errors.New("worker must be run as root")
@@ -188,6 +269,33 @@ func (cmd *WorkerCommand) loadResources(logger lager.Logger) ([]atc.WorkerResour
 
 	return types, nil
 }
+
+const cniNetworkList = `{
+  "cniVersion": "0.4.0",
+  "name": "bridge-firewalld",
+  "plugins": [
+    {
+      "type": "bridge",
+      "bridge": "concourse0",
+      "isGateway": true,
+      "ipMasq": true,
+      "ipam": {
+        "type": "host-local",
+        "subnet": "10.80.0.0/16",
+        "routes": [
+          { "dst": "0.0.0.0/0" }
+        ]
+      }
+    },
+    {
+      "type": "firewall"
+    }
+  ]
+}
+`
+
+const etcResolvconf = "nameserver 8.8.8.8\n"
+const etcHosts = "127.0.0.1 localhost\n::1 localhost\n"
 
 var gardenEnvPrefix = "CONCOURSE_GARDEN_"
 

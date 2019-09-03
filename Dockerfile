@@ -3,6 +3,17 @@
 
 FROM concourse/dev
 
+RUN apt-get update && apt-get install -y curl
+
+RUN mkdir -p /opt/cni/bin
+RUN curl -L https://github.com/containernetworking/plugins/releases/download/v0.8.2/cni-plugins-linux-amd64-v0.8.2.tgz | tar -zxf - -C /opt/cni/bin
+
+RUN mkdir -p /opt/containerd/bin
+RUN curl -L https://github.com/containerd/containerd/releases/download/v1.3.0-beta.2/containerd-1.3.0-beta.2.linux-amd64.tar.gz | tar -zxf - -C /opt/containerd
+RUN curl -L https://github.com/opencontainers/runc/releases/download/v1.0.0-rc8/runc.amd64 -o /opt/containerd/bin/runc && chmod +x /opt/containerd/bin/runc
+RUN apt-get update && apt-get -y install iptables
+ENV PATH /opt/containerd/bin:$PATH
+
 # download go modules separately so this doesn't re-run on every change
 WORKDIR /src
 COPY go.mod .
