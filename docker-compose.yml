@@ -39,6 +39,8 @@ services:
     ports:
     - 7777:7777
     - 7788:7788
+    volumes:
+    - ./resource-types:/usr/local/concourse/resource-types
     stop_signal: SIGUSR2
     environment:
       CONCOURSE_LOG_LEVEL: debug

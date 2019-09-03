@@ -1,0 +1,13 @@
+#!/bin/bash
+
+set -e -u -x
+
+for t in git registry-image; do
+  docker pull concourse/${t}-resource
+
+  mkdir -p resource-types/${t}
+  pushd resource-types/${t}
+    docker save concourse/${t}-resource -o image.tar
+    echo '{"type":"'${t}'","version":"fake"}' > resource_metadata.json
+  popd
+done
