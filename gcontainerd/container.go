@@ -208,6 +208,14 @@ func (container *container) Run(spec garden.ProcessSpec, processIO garden.Proces
 		return nil, err
 	}
 
+	// allow stdin to be closed at end of stream
+	//
+	// (despite the name, this merely *allows* it, it doesn't close it here)
+	err = process.CloseIO(container.ctx, containerd.WithStdinCloser)
+	if err != nil {
+		return nil, err
+	}
+
 	return newProcess(container.ctx, process, exitStatusC), nil
 }
 
