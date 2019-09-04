@@ -149,10 +149,10 @@ func (backend *Backend) Create(spec garden.ContainerSpec) (garden.Container, err
 		oci.WithMounts(mounts),
 
 		// enable user namespaces
-		// oci.WithLinuxNamespace(specs.LinuxNamespace{
-		// 	Type: specs.UserNamespace,
-		// }),
-		// withRemappedRoot(backend.maxUid, backend.maxGid),
+		oci.WithLinuxNamespace(specs.LinuxNamespace{
+			Type: specs.UserNamespace,
+		}),
+		withRemappedRoot(backend.maxUid, backend.maxGid),
 
 		// set handle as hostname
 		oci.WithHostname(spec.Handle),
@@ -180,8 +180,7 @@ func (backend *Backend) Create(spec garden.ContainerSpec) (garden.Container, err
 		ctx,
 		spec.Handle,
 		containerd.WithContainerLabels(spec.Properties),
-		// withRemappedSnapshotBase(spec.Handle, image, backend.maxUid, backend.maxGid),
-		containerd.WithNewSnapshot(spec.Handle, image),
+		withRemappedSnapshot(spec.Handle, image, backend.maxUid, backend.maxGid),
 		containerd.WithNewSpec(specOpts...),
 	)
 	if err != nil {
@@ -340,7 +339,7 @@ func withRemappedRoot(maxUid, maxGid uint32) oci.SpecOpts {
 	}
 }
 
-func withRemappedSnapshotBase(id string, i containerd.Image, uid, gid uint32) containerd.NewContainerOpts {
+func withRemappedSnapshot(id string, i containerd.Image, uid, gid uint32) containerd.NewContainerOpts {
 	return func(ctx context.Context, client *containerd.Client, c *containers.Container) error {
 		diffIDs, err := i.RootFS(ctx)
 		if err != nil {

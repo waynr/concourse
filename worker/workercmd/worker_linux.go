@@ -147,13 +147,13 @@ func (cmd *WorkerCommand) gardenContainerdRunner(logger lager.Logger, containerd
 		}
 
 		etcResolvconfFile := filepath.Join(cmd.WorkDir.Path(), "resolv.conf")
-		err = ioutil.WriteFile(etcResolvconfFile, []byte(etcResolvconf), 0600)
+		err = ioutil.WriteFile(etcResolvconfFile, []byte(etcResolvconf), 0644)
 		if err != nil {
 			return err
 		}
 
 		etcHostsFile := filepath.Join(cmd.WorkDir.Path(), "hosts")
-		err = ioutil.WriteFile(etcHostsFile, []byte(etcHosts), 0600)
+		err = ioutil.WriteFile(etcHostsFile, []byte(etcHosts), 0644)
 		if err != nil {
 			return err
 		}
