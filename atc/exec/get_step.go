@@ -1,21 +1,17 @@
 package exec
 
 import (
-	"archive/tar"
 	"context"
 	"fmt"
-	"github.com/concourse/concourse/atc/runtime"
-	"io"
 
-	"github.com/hashicorp/go-multierror"
+	"github.com/concourse/concourse/atc/runtime"
 
 	"code.cloudfoundry.org/lager"
 	"code.cloudfoundry.org/lager/lagerctx"
-	"github.com/DataDog/zstd"
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/creds"
 	"github.com/concourse/concourse/atc/db"
-	"github.com/concourse/concourse/atc/exec/artifact"
+	"github.com/concourse/concourse/atc/exec/build"
 	"github.com/concourse/concourse/atc/fetcher"
 	"github.com/concourse/concourse/atc/resource"
 	"github.com/concourse/concourse/atc/worker"
@@ -214,9 +210,8 @@ func (step *GetStep) Run(ctx context.Context, state RunState) error {
 		return err
 	}
 
-	state.Artifacts().RegisterSource(artifact.Name(step.plan.Name), &getArtifactSource{
-		resourceInstance: resourceInstance,
-		versionedSource:  versionedSource,
+	state.Artifacts().RegisterArtifact(build.ArtifactName(step.plan.Name), &runtime.GetArtifact{
+		VolumeHandle: versionedSource.Volume().Handle(),
 	})
 
 	versionResult := runtime.VersionResult{
@@ -240,103 +235,10 @@ func (step *GetStep) Succeeded() bool {
 	return step.succeeded
 }
 
-type getArtifactSource struct {
-	resourceInstance resource.ResourceInstance
-	versionedSource  resource.VersionedSource
-}
-
-// VolumeOn locates the cache for the GetStep's resource and version on the
-// given worker.
-func (s *getArtifactSource) VolumeOn(logger lager.Logger, worker worker.Worker) (worker.Volume, bool, error) {
-	return s.resourceInstance.FindOn(logger.Session("volume-on"), worker)
-}
-
-// StreamTo streams the resource's data to the destination.
-func (s *getArtifactSource) StreamTo(ctx context.Context, logger lager.Logger, destination worker.ArtifactDestination) error {
-	return streamToHelper(ctx, s.versionedSource, logger, destination)
-}
-
-// StreamFile streams a single file out of the resource.
-func (s *getArtifactSource) StreamFile(ctx context.Context, logger lager.Logger, path string) (io.ReadCloser, error) {
-	return streamFileHelper(ctx, s.versionedSource, logger, path)
-}
-
-func streamToHelper(
-	ctx context.Context,
-	s interface {
-		StreamOut(context.Context, string) (io.ReadCloser, error)
-	},
-	logger lager.Logger,
-	destination worker.ArtifactDestination,
-) error {
-	logger.Debug("start")
-
-	defer logger.Debug("end")
-
-	out, err := s.StreamOut(ctx, ".")
-	if err != nil {
-		logger.Error("failed", err)
-		return err
-	}
-
-	defer out.Close()
-
-	err = destination.StreamIn(ctx, ".", out)
-	if err != nil {
-		logger.Error("failed", err)
-		return err
-	}
-	return nil
-}
-
-func streamFileHelper(
-	ctx context.Context,
-	s interface {
-		StreamOut(context.Context, string) (io.ReadCloser, error)
-	},
-	logger lager.Logger,
-	path string,
-) (io.ReadCloser, error) {
-	out, err := s.StreamOut(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-
-	zstdReader := zstd.NewReader(out)
-	tarReader := tar.NewReader(zstdReader)
-
-	_, err = tarReader.Next()
-	if err != nil {
-		return nil, FileNotFoundError{Path: path}
-	}
-
-	return fileReadMultiCloser{
-		reader: tarReader,
-		closers: []io.Closer{
-			out,
-			zstdReader,
-		},
-	}, nil
-}
-
-type fileReadMultiCloser struct {
-	reader  io.Reader
-	closers []io.Closer
-}
-
-func (frc fileReadMultiCloser) Read(p []byte) (n int, err error) {
-	return frc.reader.Read(p)
-}
-
-func (frc fileReadMultiCloser) Close() error {
-	var closeErrors error
-
-	for _, closer := range frc.closers {
-		err := closer.Close()
-		if err != nil {
-			closeErrors = multierror.Append(closeErrors, err)
-		}
-	}
-
-	return closeErrors
-}
+//type GetArtifact struct {
+//	volumeHandle string
+//}
+//
+//func (art *GetArtifact) ID() string {
+//	return art.volumeHandle
+//}

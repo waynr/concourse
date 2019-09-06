@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/concourse/concourse/atc"
@@ -31,4 +32,35 @@ type VersionResult struct {
 type PutRequest struct {
 	Source atc.Source `json:"source"`
 	Params atc.Params `json:"params,omitempty"`
+}
+
+type Artifact interface {
+	ID() string
+}
+
+type TaskCacheArtifact struct {
+	TeamID   int
+	JobID    int
+	StepName string
+	Path     string
+}
+
+func (art TaskCacheArtifact) ID() string {
+	return fmt.Sprintf("%d, %d, %s, %s", art.TeamID, art.JobID, art.StepName, art.Path)
+}
+
+type GetArtifact struct {
+	VolumeHandle string
+}
+
+func (art GetArtifact) ID() string {
+	return art.VolumeHandle
+}
+
+type TaskArtifact struct {
+	VolumeHandle string
+}
+
+func (art *TaskArtifact) ID() string {
+	return art.VolumeHandle
 }

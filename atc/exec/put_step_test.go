@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/concourse/concourse/atc/runtime"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
@@ -14,10 +12,11 @@ import (
 	"github.com/concourse/concourse/atc/db"
 	"github.com/concourse/concourse/atc/db/dbfakes"
 	"github.com/concourse/concourse/atc/exec"
-	"github.com/concourse/concourse/atc/exec/artifact"
+	"github.com/concourse/concourse/atc/exec/build"
 	"github.com/concourse/concourse/atc/exec/execfakes"
 	"github.com/concourse/concourse/atc/resource"
 	"github.com/concourse/concourse/atc/resource/resourcefakes"
+	"github.com/concourse/concourse/atc/runtime"
 	"github.com/concourse/concourse/atc/worker"
 	"github.com/concourse/concourse/atc/worker/workerfakes"
 	"github.com/concourse/concourse/vars"
@@ -29,7 +28,7 @@ var _ = Describe("PutStep", func() {
 		cancel func()
 
 		fakeWorker                *workerfakes.FakeWorker
-		fakeClient                  *workerfakes.FakeClient
+		fakeClient                *workerfakes.FakeClient
 		fakeStrategy              *workerfakes.FakeContainerPlacementStrategy
 		fakeResourceFactory       *resourcefakes.FakeResourceFactory
 		fakeResourceConfigFactory *dbfakes.FakeResourceConfigFactory
@@ -53,7 +52,7 @@ var _ = Describe("PutStep", func() {
 			PipelineName: "some-pipeline",
 		}
 
-		repo  *artifact.Repository
+		repo  *build.Repository
 		state *execfakes.FakeRunState
 
 		putStep *exec.PutStep
@@ -91,7 +90,7 @@ var _ = Describe("PutStep", func() {
 		fakeDelegate.StderrReturns(stderrBuf)
 		fakeDelegate.VariablesReturns(vars.NewCredVarsTracker(credVarsTracker, false))
 
-		repo = artifact.NewRepository()
+		repo = build.NewRepository()
 		state = new(execfakes.FakeRunState)
 		state.ArtifactsReturns(repo)
 
@@ -128,9 +127,9 @@ var _ = Describe("PutStep", func() {
 		}
 
 		versionResult = runtime.VersionResult{
-				Version:  atc.Version{"some": "version"},
-				Metadata: []atc.MetadataField{{Name: "some", Value: "metadata"}},
-			}
+			Version:  atc.Version{"some": "version"},
+			Metadata: []atc.MetadataField{{Name: "some", Value: "metadata"}},
+		}
 	})
 
 	AfterEach(func() {
@@ -226,7 +225,7 @@ var _ = Describe("PutStep", func() {
 				fakeResourceConfigFactory.FindOrCreateResourceConfigReturns(fakeResourceConfig, nil)
 
 				fakeVersionResult = runtime.VersionResult{
-					Version: atc.Version{"some": "version"},
+					Version:  atc.Version{"some": "version"},
 					Metadata: []atc.MetadataField{{Name: "some", Value: "metadata"}},
 				}
 
@@ -236,7 +235,6 @@ var _ = Describe("PutStep", func() {
 				fakeResource.PutReturns(fakeVersionResult, nil)
 				fakeResourceFactory.NewResourceForContainerReturns(fakeResource)
 			})
-
 
 			It("secrets are tracked", func() {
 				mapit := vars.NewMapCredVarsTrackerIterator()
@@ -267,20 +265,20 @@ var _ = Describe("PutStep", func() {
 
 			It("calls RunPutStep with the given context", func() {
 				Expect(fakeClient.RunPutStepCallCount()).To(Equal(1))
-				putCtx, _, _, _ , _, _, _, _, _, _, _, _, _:= fakeClient.RunPutStepArgsForCall(0)
+				putCtx, _, _, _, _, _, _, _, _, _, _, _, _ := fakeClient.RunPutStepArgsForCall(0)
 				Expect(putCtx).To(Equal(ctx))
 			})
 
 			It("puts the resource with the correct source and params", func() {
 				Expect(fakeClient.RunPutStepCallCount()).To(Equal(1))
-				_, _, _, _ , _, putSource, putParams, _, _, _, _, _, _:= fakeClient.RunPutStepArgsForCall(0)
+				_, _, _, _, _, putSource, putParams, _, _, _, _, _, _ := fakeClient.RunPutStepArgsForCall(0)
 				Expect(putSource).To(Equal(atc.Source{"some": "super-secret-source"}))
 				Expect(putParams).To(Equal(atc.Params{"some-param": "some-value"}))
 			})
 
 			It("puts the resource with the io config forwarded", func() {
 				Expect(fakeClient.RunPutStepCallCount()).To(Equal(1))
-				_, _, _, _ , _, _, _, _, _, _, _, processSpec, _:= fakeClient.RunPutStepArgsForCall(0)
+				_, _, _, _, _, _, _, _, _, _, _, processSpec, _ := fakeClient.RunPutStepArgsForCall(0)
 				Expect(processSpec.StdoutWriter).To(Equal(stdoutBuf))
 				Expect(processSpec.StderrWriter).To(Equal(stderrBuf))
 			})
@@ -333,7 +331,7 @@ var _ = Describe("PutStep", func() {
 
 			Context("when RunPutStep exits unsuccessfully", func() {
 				BeforeEach(func() {
-					versionResult  = runtime.VersionResult{}
+					versionResult = runtime.VersionResult{}
 					clientErr = resource.ErrResourceScriptFailed{
 						ExitStatus: 42,
 					}

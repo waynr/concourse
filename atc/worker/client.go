@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -10,11 +11,12 @@ import (
 
 	"code.cloudfoundry.org/garden"
 	"code.cloudfoundry.org/lager"
+	"github.com/concourse/baggageclaim"
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
 	"github.com/concourse/concourse/atc/db/lock"
 	"github.com/concourse/concourse/atc/runtime"
-	multierror "github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/go-multierror"
 )
 
 const taskProcessID = "task"
@@ -54,6 +56,7 @@ type Client interface {
 		ProcessSpec,
 		chan runtime.Event,
 	) PutResult
+	StreamFileFromArtifact(ctx context.Context, logger lager.Logger, artifact runtime.Artifact, filePath string) (io.ReadCloser, error)
 }
 
 func NewClient(pool Pool, provider WorkerProvider) *client {
@@ -467,4 +470,27 @@ func (client *client) RunPutStep(
 		result = PutResult{0, vr, nil}
 	}
 	return result
+}
+
+func (client *client) StreamFileFromArtifact(ctx context.Context, logger lager.Logger, artifact runtime.Artifact, filePath string) (io.ReadCloser, error) {
+	var getArtifact runtime.GetArtifact
+	var ok bool
+
+	if getArtifact, ok = artifact.(runtime.GetArtifact); !ok {
+		return nil, errors.New("unrecognized task config artifact type")
+	}
+
+	artifactVolume, found, err := client.FindVolume(logger, 0, getArtifact.ID())
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, baggageclaim.ErrVolumeNotFound
+	}
+
+	source := getArtifactSource{
+		artifact: getArtifact,
+		volume:   artifactVolume,
+	}
+	return source.StreamFile(ctx, logger, filePath)
 }
