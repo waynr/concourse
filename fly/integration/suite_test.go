@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/onsi/gomega/gbytes"
 	"io/ioutil"
 	"net/http"
 	"os"

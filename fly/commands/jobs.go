@@ -5,6 +5,7 @@ import (
 
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/fly/commands/internal/displayhelpers"
+	"github.com/concourse/concourse/go-concourse/concourse"
 	"github.com/concourse/concourse/fly/rc"
 	"github.com/concourse/concourse/fly/ui"
 	"github.com/fatih/color"
@@ -13,6 +14,7 @@ import (
 type JobsCommand struct {
 	Pipeline string `short:"p" long:"pipeline" required:"true" description:"Get jobs in this pipeline"`
 	Json     bool   `long:"json" description:"Print command result as JSON"`
+	Team     string `short:"n" long:"team" description:"Show jobs for the given team"`
 }
 
 func (command *JobsCommand) Execute([]string) error {
@@ -29,9 +31,15 @@ func (command *JobsCommand) Execute([]string) error {
 	}
 
 	var headers []string
-	var jobs []atc.Job
+	var team concourse.Team
+	if command.Team != "" {
+		team = target.Client().Team(command.Team)
+	} else {
+		team = target.Team()
+	}
 
-	jobs, err = target.Team().ListJobs(pipelineName)
+	var jobs []atc.Job
+	jobs, err = team.ListJobs(pipelineName)
 	if err != nil {
 		return err
 	}

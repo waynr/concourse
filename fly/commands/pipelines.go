@@ -12,9 +12,9 @@ import (
 )
 
 type PipelinesCommand struct {
-	AllTeams  bool `short:"a"  long:"all-teams" description:"Show all pipelines for all available teams"`
-	Teams []string `short:"n" long:"team" description:"Show pipelines for the given teams"`
-	Json bool `long:"json" description:"Print command result as JSON"`
+	AllTeams bool     `short:"a"  long:"all-teams" description:"Show all pipelines for all available teams"`
+	Teams    []string `short:"n" long:"team" description:"Show pipelines for the given teams"`
+	Json     bool     `long:"json" description:"Print command result as JSON"`
 }
 
 func (command *PipelinesCommand) Execute([]string) error {
