@@ -182,7 +182,7 @@ func (i *imageResourceFetcher) Fetch(
 
 	volume := versionedSource.Volume()
 	if volume == nil {
-		return nil, nil, nil, ErrImageGetDidNotProduceVolume
+		return nil, nil, ErrImageGetDidNotProduceVolume
 	}
 	return volume, version, nil
 }

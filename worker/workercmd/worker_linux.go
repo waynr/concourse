@@ -36,7 +36,7 @@ type GardenBackend struct {
 
 	CNIPluginDir flag.Dir `long:"cni-plugin-dir" default:"/opt/cni/bin" description:"Directory containing CNI plugins."`
 
-	DNS DNSConfig `group:"DNS Proxy Configuration" namespace:"dns-proxy"`
+	DNS concourseCmd.DNSConfig `group:"DNS Proxy Configuration" namespace:"dns-proxy"`
 }
 
 func (cmd WorkerCommand) LessenRequirements(prefix string, command *flags.Command) {
