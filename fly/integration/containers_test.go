@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"os/exec"
 
 	"github.com/concourse/concourse/atc"
@@ -52,43 +53,13 @@ var _ = Describe("Fly CLI", func() {
 		},
 	}
 
-	var sampleContainerJsonString string = `[
-			{
-				"id": "handle-1",
-				"worker_name": "worker-name-1",
-				"type": "check",
-				"pipeline_name": "pipeline-name",
-				"resource_name": "git-repo"
-			},
-			{
-				"id": "early-handle",
-				"worker_name": "worker-name-1",
-				"type": "get",
-				"step_name": "git-repo",
-				"attempt": "1.5",
-				"build_id": 123,
-				"pipeline_name": "pipeline-name",
-				"job_name": "job-name-1",
-				"build_name": "3"
-			},
-			{
-				"id": "other-handle",
-				"worker_name": "worker-name-2",
-				"type": "task",
-				"step_name": "unit-tests",
-				"build_id": 122,
-				"pipeline_name": "pipeline-name",
-				"job_name": "job-name-2",
-				"build_name": "2"
-			},
-			{
-				"id": "post-handle",
-				"worker_name": "worker-name-3",
-				"type": "task",
-				"step_name": "one-off",
-				"build_id": 142
-			}
-		]`
+	var sampleContainerJsonString = func() string {
+		b, err := json.Marshal(sampleContainers)
+		if err != nil {
+			panic(err)
+		}
+		return string(b)
+	}()
 
 	Describe("containers", func() {
 		var (
@@ -169,43 +140,6 @@ var _ = Describe("Fly CLI", func() {
 		})
 
 		Context("containers for teams", func() {
-			var loginATCServer *ghttp.Server
-
-			teams := []atc.Team{
-				atc.Team{
-					ID:   1,
-					Name: "main",
-				},
-				atc.Team{
-					ID:   2,
-					Name: "other-team",
-				},
-			}
-
-			BeforeEach(func() {
-				loginATCServer = ghttp.NewServer()
-				loginATCServer.AppendHandlers(
-					infoHandler(),
-					adminTokenHandler(encodedTokenString(true)),
-					teamHandler(teams, encodedTokenString(true)),
-					infoHandler(),
-				)
-
-				flyLoginCmd := exec.Command(flyPath, "-t", "some-target", "login", "-c", loginATCServer.URL(), "-n", "main", "-u", "test", "-p", "test")
-				sess, err := gexec.Start(flyLoginCmd, GinkgoWriter, GinkgoWriter)
-				Expect(err).NotTo(HaveOccurred())
-
-				Eventually(sess).Should(gbytes.Say("logging in to team 'main'"))
-
-				<-sess.Exited
-				Expect(sess.ExitCode()).To(Equal(0))
-				Expect(sess.Out).To(gbytes.Say("target saved"))
-			})
-
-			AfterEach(func() {
-				loginATCServer.Close()
-			})
-
 			Context("using --team parameter", func() {
 				BeforeEach(func() {
 					loginATCServer.AppendHandlers(

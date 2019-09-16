@@ -236,43 +236,6 @@ var _ = Describe("Fly CLI", func() {
 		})
 
 		Context("pipelines for teams", func() {
-			var loginATCServer *ghttp.Server
-
-			teams := []atc.Team{
-				atc.Team{
-					ID:   1,
-					Name: "main",
-				},
-				atc.Team{
-					ID:   2,
-					Name: "other-team",
-				},
-			}
-
-			BeforeEach(func() {
-				loginATCServer = ghttp.NewServer()
-				loginATCServer.AppendHandlers(
-					infoHandler(),
-					adminTokenHandler(encodedTokenString(true)),
-					teamHandler(teams, encodedTokenString(true)),
-					infoHandler(),
-				)
-
-				flyLoginCmd := exec.Command(flyPath, "-t", "some-target", "login", "-c", loginATCServer.URL(), "-n", "main", "-u", "test", "-p", "test")
-				sess, err := gexec.Start(flyLoginCmd, GinkgoWriter, GinkgoWriter)
-				Expect(err).NotTo(HaveOccurred())
-
-				Eventually(sess).Should(gbytes.Say("logging in to team 'main'"))
-
-				<-sess.Exited
-				Expect(sess.ExitCode()).To(Equal(0))
-				Expect(sess.Out).To(gbytes.Say("target saved"))
-			})
-
-			AfterEach(func() {
-				loginATCServer.Close()
-			})
-
 			Context("using --team parameter", func() {
 				BeforeEach(func() {
 					loginATCServer.AppendHandlers(

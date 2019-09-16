@@ -8,7 +8,6 @@ import (
 
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/go-concourse/concourse"
-
 	"github.com/concourse/concourse/fly/commands/internal/displayhelpers"
 	"github.com/concourse/concourse/fly/rc"
 	"github.com/concourse/concourse/fly/ui"
@@ -16,9 +15,9 @@ import (
 )
 
 type ContainersCommand struct {
-	Json      bool     `long:"json" description:"Print command result as JSON"`
-	AllTeams   bool     `short:"a" long:"all-teams" description:"Show containers for all available teams"`
-	Teams []string `short:"n" long:"team" description:"Show containers for the given teams"`
+	AllTeams bool     `short:"a" long:"all-teams" description:"Show containers for all available teams"`
+	Json     bool     `long:"json" description:"Print command result as JSON"`
+	Teams    []string `short:"n" long:"team" description:"Show containers for the given teams"`
 }
 
 func (command *ContainersCommand) Execute([]string) error {

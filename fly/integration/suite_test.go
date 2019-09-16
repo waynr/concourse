@@ -15,6 +15,7 @@ import (
 	"github.com/concourse/concourse/atc"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 	"github.com/onsi/gomega/ghttp"
 )
@@ -23,11 +24,23 @@ var flyPath string
 var homeDir string
 
 var atcServer *ghttp.Server
+var loginATCServer *ghttp.Server
 
 const targetName = "testserver"
 const teamName = "main"
 const atcVersion = "4.0.0"
 const workerVersion = "4.5.6"
+
+var teams = []atc.Team{
+	atc.Team{
+		ID:   1,
+		Name: "main",
+	},
+	atc.Team{
+		ID:   2,
+		Name: "other-team",
+	},
+}
 
 var _ = SynchronizedBeforeSuite(func() []byte {
 	binPath, err := gexec.Build("github.com/concourse/concourse/fly")
@@ -94,7 +107,7 @@ func encodedTokenString(isAdmin bool) string {
 func teamHandler(teams []atc.Team, encodedString string) http.HandlerFunc {
 	return ghttp.CombineHandlers(
 		ghttp.VerifyRequest("GET", "/api/v1/teams"),
-		ghttp.VerifyHeaderKV("Authorization", "Bearer foo." + encodedString),
+		ghttp.VerifyHeaderKV("Authorization", "Bearer foo."+encodedString),
 		ghttp.RespondWithJSONEncoded(200, teams),
 	)
 }
@@ -129,11 +142,33 @@ var _ = BeforeEach(func() {
 	<-session.Exited
 
 	Expect(session.ExitCode()).To(Equal(0))
+
+	// super admin login server
+	loginATCServer = ghttp.NewServer()
+	loginATCServer.AppendHandlers(
+		infoHandler(),
+		adminTokenHandler(encodedTokenString(true)),
+		teamHandler(teams, encodedTokenString(true)),
+		infoHandler(),
+	)
+
+	flyLoginCmd := exec.Command(flyPath, "-t", "some-target", "login", "-c", loginATCServer.URL(), "-n", "main", "-u", "test", "-p", "test")
+	sess, err := gexec.Start(flyLoginCmd, GinkgoWriter, GinkgoWriter)
+	Expect(err).NotTo(HaveOccurred())
+
+	Eventually(sess).Should(gbytes.Say("logging in to team 'main'"))
+
+	<-sess.Exited
+	Expect(sess.ExitCode()).To(Equal(0))
+	Expect(sess.Out).To(gbytes.Say("target saved"))
+
 })
 
 var _ = AfterEach(func() {
 	atcServer.Close()
 	os.RemoveAll(homeDir)
+	loginATCServer.Close()
+
 })
 
 func TestIntegration(t *testing.T) {

@@ -3,13 +3,13 @@ package commands
 import (
 	"errors"
 	"fmt"
-	"github.com/concourse/concourse/go-concourse/concourse"
 	"os"
 	"sort"
 	"strings"
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/concourse/concourse/go-concourse/concourse"
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/fly/commands/internal/displayhelpers"
 	"github.com/concourse/concourse/fly/rc"
