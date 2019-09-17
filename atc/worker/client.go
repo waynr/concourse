@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/concourse/concourse/atc/resource"
+
 	"code.cloudfoundry.org/garden"
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/baggageclaim"
@@ -56,6 +58,20 @@ type Client interface {
 		ProcessSpec,
 		chan runtime.Event,
 	) PutResult
+	RunGetStep(
+		context.Context,
+		lager.Logger,
+		db.ContainerOwner,
+		ContainerSpec,
+		WorkerSpec,
+		ContainerPlacementStrategy,
+		db.ContainerMetadata,
+		atc.VersionedResourceTypes,
+		resource.ResourceInstance,
+		Fetcher,
+		ImageFetchingDelegate,
+		chan runtime.Event,
+	) GetResult
 	StreamFileFromArtifact(ctx context.Context, logger lager.Logger, artifact runtime.Artifact, filePath string) (io.ReadCloser, error)
 }
 
@@ -80,6 +96,13 @@ type TaskResult struct {
 type PutResult struct {
 	Status        int
 	VersionResult runtime.VersionResult
+	Err           error
+}
+
+type GetResult struct {
+	Status        int
+	VersionResult runtime.VersionResult
+	GetArtifact   runtime.GetArtifact
 	Err           error
 }
 
@@ -149,7 +172,7 @@ func (client *client) RunTaskStep(
 	workerSpec WorkerSpec,
 	strategy ContainerPlacementStrategy,
 	metadata db.ContainerMetadata,
-	imageSpec ImageFetcherSpec,
+	imageFetcherSpec ImageFetcherSpec,
 	processSpec ProcessSpec,
 	events chan runtime.Event,
 ) TaskResult {
@@ -174,11 +197,11 @@ func (client *client) RunTaskStep(
 	container, err := chosenWorker.FindOrCreateContainer(
 		ctx,
 		logger,
-		imageSpec.Delegate,
+		imageFetcherSpec.Delegate,
 		owner,
 		metadata,
 		containerSpec,
-		imageSpec.ResourceTypes,
+		imageFetcherSpec.ResourceTypes,
 	)
 
 	if err != nil {
@@ -269,6 +292,82 @@ func (client *client) RunTaskStep(
 			return TaskResult{Status: status.processStatus, VolumeMounts: []VolumeMount{}, Err: err}
 		}
 		return TaskResult{Status: status.processStatus, VolumeMounts: container.VolumeMounts(), Err: nil}
+	}
+}
+func (client *client) RunGetStep(
+	ctx context.Context,
+	logger lager.Logger,
+	owner db.ContainerOwner,
+	containerSpec ContainerSpec,
+	workerSpec WorkerSpec,
+	strategy ContainerPlacementStrategy,
+	containerMetadata db.ContainerMetadata,
+	resourceTypes atc.VersionedResourceTypes,
+	resourceInstance resource.ResourceInstance,
+	resourceFetcher Fetcher,
+	delegate ImageFetchingDelegate,
+	events chan runtime.Event,
+) GetResult {
+	vr := runtime.VersionResult{}
+	chosenWorker, err := client.pool.FindOrChooseWorkerForContainer(
+		ctx,
+		logger,
+		owner,
+		containerSpec,
+		workerSpec,
+		strategy,
+	)
+	if err != nil {
+		return GetResult{Status: -1, VersionResult: vr, Err: err}
+	}
+
+	events <- runtime.Event{
+		EventType: runtime.StartingEvent,
+	}
+
+	versionedSource, err := resourceFetcher.Fetch(
+		ctx,
+		logger,
+		containerMetadata,
+		chosenWorker,
+		containerSpec,
+		resourceTypes,
+		resourceInstance,
+		delegate,
+	)
+	if err != nil {
+		logger.Error("failed-to-fetch-resource", err)
+		exitStatus := -1
+
+		if err, ok := err.(resource.ErrResourceScriptFailed); ok {
+			exitStatus = err.ExitStatus
+			events <- runtime.Event{
+				EventType:     runtime.FinishedEvent,
+				ExitStatus:    exitStatus,
+				VersionResult: vr,
+			}
+			// TODO This is compatible with old behaviour but is that desired ? Can it be refactored ?
+			return GetResult{}
+		}
+
+		return GetResult{Status: exitStatus, VersionResult: vr, Err: err}
+	}
+
+	vr = runtime.VersionResult{
+		Version:  versionedSource.Version(),
+		Metadata: versionedSource.Metadata(),
+	}
+
+	events <- runtime.Event{
+		EventType:     runtime.FinishedEvent,
+		VersionResult: vr,
+	}
+	return GetResult{
+		VersionResult: vr,
+		Err:           nil,
+		GetArtifact: runtime.GetArtifact{
+			VolumeHandle: versionedSource.Volume().Handle(),
+		},
 	}
 }
 func (client *client) chooseTaskWorker(
@@ -404,7 +503,7 @@ func (client *client) RunPutStep(
 	params atc.Params,
 	strategy ContainerPlacementStrategy,
 	metadata db.ContainerMetadata,
-	imageSpec ImageFetcherSpec,
+	imageFetcherSpec ImageFetcherSpec,
 	resourceDir string,
 	spec ProcessSpec,
 	events chan runtime.Event,
@@ -427,11 +526,11 @@ func (client *client) RunPutStep(
 	container, err := chosenWorker.FindOrCreateContainer(
 		ctx,
 		logger,
-		imageSpec.Delegate,
+		imageFetcherSpec.Delegate,
 		owner,
 		metadata,
 		containerSpec,
-		imageSpec.ResourceTypes,
+		imageFetcherSpec.ResourceTypes,
 	)
 	if err != nil {
 		return PutResult{Status: -1, VersionResult: vr, Err: err}

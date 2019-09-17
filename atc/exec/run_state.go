@@ -20,7 +20,7 @@ func NewRunState() RunState {
 	}
 }
 
-func (state *runState) Artifacts() *build.Repository {
+func (state *runState) ArtifactRepository() *build.Repository {
 	return state.artifacts
 }
 

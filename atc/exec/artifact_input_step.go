@@ -85,7 +85,7 @@ func (step *ArtifactInputStep) Run(ctx context.Context, state RunState) error {
 		"handle":      art.ID(),
 	})
 
-	state.Artifacts().RegisterArtifact(build.ArtifactName(step.plan.ArtifactInput.Name), &art)
+	state.ArtifactRepository().RegisterArtifact(build.ArtifactName(step.plan.ArtifactInput.Name), &art)
 
 	step.succeeded = true
 

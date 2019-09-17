@@ -44,7 +44,7 @@ func (step *ArtifactOutputStep) Run(ctx context.Context, state RunState) error {
 
 	outputName := step.plan.ArtifactOutput.Name
 
-	buildArtifact, found := state.Artifacts().ArtifactFor(build.ArtifactName(outputName))
+	buildArtifact, found := state.ArtifactRepository().ArtifactFor(build.ArtifactName(outputName))
 	if !found {
 		return ArtifactNotFoundError{outputName}
 	}

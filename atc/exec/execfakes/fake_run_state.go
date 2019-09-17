@@ -42,12 +42,12 @@ type FakeRunState struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeRunState) Artifacts() *build.Repository {
+func (fake *FakeRunState) ArtifactRepository() *build.Repository {
 	fake.artifactsMutex.Lock()
 	ret, specificReturn := fake.artifactsReturnsOnCall[len(fake.artifactsArgsForCall)]
 	fake.artifactsArgsForCall = append(fake.artifactsArgsForCall, struct {
 	}{})
-	fake.recordInvocation("Artifacts", []interface{}{})
+	fake.recordInvocation("ArtifactRepository", []interface{}{})
 	fake.artifactsMutex.Unlock()
 	if fake.ArtifactsStub != nil {
 		return fake.ArtifactsStub()

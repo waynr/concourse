@@ -3,11 +3,11 @@ package resourcefakes
 
 import (
 	"context"
-	"github.com/concourse/concourse/atc/runtime"
 	"sync"
 
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/resource"
+	"github.com/concourse/concourse/atc/runtime"
 	"github.com/concourse/concourse/atc/worker"
 )
 

@@ -1,4 +1,4 @@
-package fetcher
+package worker
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	"github.com/concourse/concourse/atc/db"
 	"github.com/concourse/concourse/atc/db/lock"
 	"github.com/concourse/concourse/atc/resource"
-	"github.com/concourse/concourse/atc/worker"
 )
 
 const GetResourceLockInterval = 5 * time.Second
@@ -27,11 +26,11 @@ type Fetcher interface {
 		ctx context.Context,
 		logger lager.Logger,
 		containerMetadata db.ContainerMetadata,
-		gardenWorker worker.Worker,
-		containerSpec worker.ContainerSpec,
+		gardenWorker Worker,
+		containerSpec ContainerSpec,
 		resourceTypes atc.VersionedResourceTypes,
 		resourceInstance resource.ResourceInstance,
-		imageFetchingDelegate worker.ImageFetchingDelegate,
+		imageFetchingDelegate ImageFetchingDelegate,
 	) (resource.VersionedSource, error)
 }
 
@@ -57,11 +56,11 @@ func (f *fetcher) Fetch(
 	ctx context.Context,
 	logger lager.Logger,
 	containerMetadata db.ContainerMetadata,
-	gardenWorker worker.Worker,
-	containerSpec worker.ContainerSpec,
+	gardenWorker Worker,
+	containerSpec ContainerSpec,
 	resourceTypes atc.VersionedResourceTypes,
 	resourceInstance resource.ResourceInstance,
-	imageFetchingDelegate worker.ImageFetchingDelegate,
+	imageFetchingDelegate ImageFetchingDelegate,
 ) (resource.VersionedSource, error) {
 	containerSpec.Outputs = map[string]string{
 		"resource": resource.ResourcesDir("get"),

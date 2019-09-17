@@ -1,4 +1,4 @@
-package fetcher
+package worker
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
 	"github.com/concourse/concourse/atc/resource"
-	"github.com/concourse/concourse/atc/worker"
 )
 
 //go:generate counterfeiter . FetchSource
@@ -25,12 +24,12 @@ type FetchSource interface {
 type FetchSourceFactory interface {
 	NewFetchSource(
 		logger lager.Logger,
-		worker worker.Worker,
+		worker Worker,
 		resourceInstance resource.ResourceInstance,
 		resourceTypes atc.VersionedResourceTypes,
-		containerSpec worker.ContainerSpec,
+		containerSpec ContainerSpec,
 		containerMetadata db.ContainerMetadata,
-		imageFetchingDelegate worker.ImageFetchingDelegate,
+		imageFetchingDelegate ImageFetchingDelegate,
 	) FetchSource
 }
 
@@ -51,12 +50,12 @@ func NewFetchSourceFactory(
 
 func (r *fetchSourceFactory) NewFetchSource(
 	logger lager.Logger,
-	worker worker.Worker,
+	worker Worker,
 	resourceInstance resource.ResourceInstance,
 	resourceTypes atc.VersionedResourceTypes,
-	containerSpec worker.ContainerSpec,
+	containerSpec ContainerSpec,
 	containerMetadata db.ContainerMetadata,
-	imageFetchingDelegate worker.ImageFetchingDelegate,
+	imageFetchingDelegate ImageFetchingDelegate,
 ) FetchSource {
 	return &resourceInstanceFetchSource{
 		logger:                 logger,
@@ -73,12 +72,12 @@ func (r *fetchSourceFactory) NewFetchSource(
 
 type resourceInstanceFetchSource struct {
 	logger                 lager.Logger
-	worker                 worker.Worker
+	worker                 Worker
 	resourceInstance       resource.ResourceInstance
 	resourceTypes          atc.VersionedResourceTypes
-	containerSpec          worker.ContainerSpec
+	containerSpec          ContainerSpec
 	containerMetadata      db.ContainerMetadata
-	imageFetchingDelegate  worker.ImageFetchingDelegate
+	imageFetchingDelegate  ImageFetchingDelegate
 	dbResourceCacheFactory db.ResourceCacheFactory
 	resourceFactory        resource.ResourceFactory
 }
@@ -129,8 +128,8 @@ func (s *resourceInstanceFetchSource) Create(ctx context.Context) (resource.Vers
 		return versionedSource, nil
 	}
 
-	s.containerSpec.BindMounts = []worker.BindMountSource{
-		&worker.CertsVolumeMount{Logger: s.logger},
+	s.containerSpec.BindMounts = []BindMountSource{
+		&CertsVolumeMount{Logger: s.logger},
 	}
 
 	container, err := s.worker.FindOrCreateContainer(
@@ -152,7 +151,7 @@ func (s *resourceInstanceFetchSource) Create(ctx context.Context) (resource.Vers
 	}
 
 	mountPath := resource.ResourcesDir("get")
-	var volume worker.Volume
+	var volume Volume
 	for _, mount := range container.VolumeMounts() {
 		if mount.MountPath == mountPath {
 			volume = mount.Volume
@@ -160,6 +159,7 @@ func (s *resourceInstanceFetchSource) Create(ctx context.Context) (resource.Vers
 		}
 	}
 
+	// todo: we want to decouple this resource from the container
 	res := s.resourceFactory.NewResourceForContainer(container)
 	versionedSource, err = res.Get(
 		ctx,

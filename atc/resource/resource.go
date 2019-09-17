@@ -2,8 +2,9 @@ package resource
 
 import (
 	"context"
-	"github.com/concourse/concourse/atc/runtime"
 	"path/filepath"
+
+	"github.com/concourse/concourse/atc/runtime"
 
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/worker"
@@ -45,6 +46,7 @@ func NewResource(container worker.Container) *resource {
 }
 
 type resource struct {
+	// TODO make this wrap a Runnable instead of a container
 	container worker.Container
 }
 

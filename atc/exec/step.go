@@ -50,7 +50,7 @@ type BuildStepDelegate interface {
 //go:generate counterfeiter . RunState
 
 type RunState interface {
-	Artifacts() *build.Repository
+	ArtifactRepository() *build.Repository
 
 	Result(atc.PlanID, interface{}) bool
 	StoreResult(atc.PlanID, interface{})

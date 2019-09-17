@@ -110,7 +110,7 @@ func (step *PutStep) Run(ctx context.Context, state RunState) error {
 		putInputs = NewSpecificInputs(step.plan.Inputs.Specified)
 	}
 
-	containerInputs, err := putInputs.FindAll(state.Artifacts())
+	containerInputs, err := putInputs.FindAll(state.ArtifactRepository())
 	if err != nil {
 		return err
 	}
@@ -164,6 +164,7 @@ func (step *PutStep) Run(ctx context.Context, state RunState) error {
 		}
 	}(logger, events, step.delegate)
 
+	// TODO: this might be duplicate. check if client ever calls Initializing?
 	step.delegate.Initializing(logger)
 
 	resourceDir := resource.ResourcesDir("put")
@@ -223,6 +224,7 @@ func (step *PutStep) Run(ctx context.Context, state RunState) error {
 
 	step.succeeded = true
 
+	// TODO This should happen in client.RuntGetStep itself similar to TaskStep
 	step.delegate.Finished(logger, 0, versionResult)
 
 	return nil

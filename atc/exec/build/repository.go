@@ -10,7 +10,7 @@ import (
 // more self-documenting.
 type ArtifactName string
 
-// Repository is the mapping from a ArtifactName to an ArtifactSource.
+// Repository is the mapping from a ArtifactName to an Artifact.
 // Steps will both populate this map with new artifacts (e.g.  the resource
 // fetched by a Get step), and look up required artifacts (e.g.  the inputs
 // configured for a Task step).
@@ -18,9 +18,6 @@ type ArtifactName string
 // There is only one ArtifactRepository for the duration of a build plan's
 // execution.
 //
-// ArtifactRepository is, itself, an ArtifactSource. As an ArtifactSource it acts
-// as the set of all ArtifactSources it contains, as if they were each in
-// subdirectories corresponding to their ArtifactName.
 type Repository struct {
 	repo  map[ArtifactName]runtime.Artifact
 	repoL sync.RWMutex
@@ -33,8 +30,8 @@ func NewRepository() *Repository {
 	}
 }
 
-//go:generate counterfeiter . RegisterableSource
-// A RegisterableSource	artifact is an ArtifactSource which can be added to the registry
+//go:generate counterfeiter . RegisterableArtifact
+// A RegisterableArtifact is an Artifact which can be added to the registry
 type RegisterableArtifact interface {
 	runtime.Artifact
 }
