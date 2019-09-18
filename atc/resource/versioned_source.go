@@ -5,9 +5,10 @@ import (
 	"io"
 	"path"
 
+	"github.com/concourse/concourse/atc/worker"
+
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/runtime"
-	"github.com/concourse/concourse/atc/worker"
 )
 
 //go:generate counterfeiter . VersionedSource

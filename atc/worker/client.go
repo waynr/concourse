@@ -70,6 +70,7 @@ type Client interface {
 		resource.ResourceInstance,
 		Fetcher,
 		ImageFetchingDelegate,
+		db.UsedResourceCache,
 		chan runtime.Event,
 	) GetResult
 	StreamFileFromArtifact(ctx context.Context, logger lager.Logger, artifact runtime.Artifact, filePath string) (io.ReadCloser, error)
@@ -306,6 +307,7 @@ func (client *client) RunGetStep(
 	resourceInstance resource.ResourceInstance,
 	resourceFetcher Fetcher,
 	delegate ImageFetchingDelegate,
+	cache db.UsedResourceCache,
 	events chan runtime.Event,
 ) GetResult {
 	vr := runtime.VersionResult{}
@@ -325,6 +327,7 @@ func (client *client) RunGetStep(
 		EventType: runtime.StartingEvent,
 	}
 
+	// start of dependency on resource -> worker
 	versionedSource, err := resourceFetcher.Fetch(
 		ctx,
 		logger,
@@ -334,6 +337,7 @@ func (client *client) RunGetStep(
 		resourceTypes,
 		resourceInstance,
 		delegate,
+		cache,
 	)
 	if err != nil {
 		logger.Error("failed-to-fetch-resource", err)

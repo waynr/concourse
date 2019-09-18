@@ -2,10 +2,12 @@ package resource
 
 import (
 	"context"
+
+	"github.com/concourse/concourse/atc/worker"
+
 	"github.com/concourse/concourse/atc/runtime"
 
 	"github.com/concourse/concourse/atc"
-	"github.com/concourse/concourse/atc/worker"
 )
 
 type getRequest struct {
@@ -24,6 +26,7 @@ func (resource *resource) Get(
 ) (VersionedSource, error) {
 	var vr runtime.VersionResult
 
+	// should be something on worker client, not direct runScript call
 	err := resource.runScript(
 		ctx,
 		"/opt/resource/in",

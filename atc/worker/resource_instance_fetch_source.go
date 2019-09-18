@@ -1,5 +1,8 @@
 package worker
 
+// this file takes in a resource and returns a source (Volume)
+// we might not need to model this way
+
 import (
 	"context"
 
@@ -15,7 +18,7 @@ import (
 
 type FetchSource interface {
 	LockName() (string, error)
-	Find() (resource.VersionedSource, bool, error)
+	Find(cache db.UsedResourceCache) (resource.VersionedSource, bool, error)
 	Create(context.Context) (resource.VersionedSource, error)
 }
 
@@ -86,10 +89,19 @@ func (s *resourceInstanceFetchSource) LockName() (string, error) {
 	return s.resourceInstance.LockName(s.worker.Name())
 }
 
-func (s *resourceInstanceFetchSource) Find() (resource.VersionedSource, bool, error) {
+func findOn(logger lager.Logger, w Worker, cache db.UsedResourceCache) (volume Volume, found bool, err error) {
+	return w.FindVolumeForResourceCache(
+		logger,
+		cache,
+	)
+}
+
+func (s *resourceInstanceFetchSource) Find(cache db.UsedResourceCache) (resource.VersionedSource, bool, error) {
 	sLog := s.logger.Session("find")
 
-	volume, found, err := s.resourceInstance.FindOn(s.logger, s.worker)
+	// can we make FindOn a standalone function that takes a resourceInstance as an arg?
+	//volume, found, err := s.resourceInstance.FindOn(s.logger, s.worker)
+	volume, found, err := findOn(s.logger, s.worker, cache)
 	if err != nil {
 		sLog.Error("failed-to-find-initialized-on", err)
 		return nil, false, err

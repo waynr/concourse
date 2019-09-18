@@ -31,6 +31,7 @@ type Fetcher interface {
 		resourceTypes atc.VersionedResourceTypes,
 		resourceInstance resource.ResourceInstance,
 		imageFetchingDelegate ImageFetchingDelegate,
+		cache db.UsedResourceCache,
 	) (resource.VersionedSource, error)
 }
 
@@ -61,6 +62,7 @@ func (f *fetcher) Fetch(
 	resourceTypes atc.VersionedResourceTypes,
 	resourceInstance resource.ResourceInstance,
 	imageFetchingDelegate ImageFetchingDelegate,
+	cache db.UsedResourceCache,
 ) (resource.VersionedSource, error) {
 	containerSpec.Outputs = map[string]string{
 		"resource": resource.ResourcesDir("get"),
@@ -71,7 +73,7 @@ func (f *fetcher) Fetch(
 	ticker := f.clock.NewTicker(GetResourceLockInterval)
 	defer ticker.Stop()
 
-	versionedSource, err := f.fetchWithLock(ctx, logger, source, imageFetchingDelegate.Stdout())
+	versionedSource, err := f.fetchWithLock(ctx, logger, source, imageFetchingDelegate.Stdout(), cache)
 	if err != ErrFailedToGetLock {
 		return versionedSource, err
 	}
@@ -79,7 +81,8 @@ func (f *fetcher) Fetch(
 	for {
 		select {
 		case <-ticker.C():
-			versionedSource, err := f.fetchWithLock(ctx, logger, source, imageFetchingDelegate.Stdout())
+			//TODO this is called redundantly
+			versionedSource, err := f.fetchWithLock(ctx, logger, source, imageFetchingDelegate.Stdout(), cache)
 			if err != nil {
 				if err == ErrFailedToGetLock {
 					break
@@ -100,8 +103,9 @@ func (f *fetcher) fetchWithLock(
 	logger lager.Logger,
 	source FetchSource,
 	stdout io.Writer,
+	cache db.UsedResourceCache,
 ) (resource.VersionedSource, error) {
-	versionedSource, found, err := source.Find()
+	versionedSource, found, err := source.Find(cache)
 	if err != nil {
 		return nil, err
 	}

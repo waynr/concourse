@@ -64,3 +64,13 @@ type TaskArtifact struct {
 func (art *TaskArtifact) ID() string {
 	return art.VolumeHandle
 }
+
+//type Runnable interface {
+//	Destroy() error
+//
+//	VolumeMounts() []VolumeMount
+//
+//	WorkerName() string
+//
+//	MarkAsHijacked() error
+//}
