@@ -80,6 +80,7 @@ const (
 	GetInfo      = "Info"
 	GetInfoCreds = "InfoCreds"
 
+	ListAllContainers = "ListAllContainers"
 	ListContainers           = "ListContainers"
 	GetContainer             = "GetContainer"
 	HijackContainer          = "HijackContainer"
@@ -191,9 +192,10 @@ var Routes = rata.Routes([]rata.Route{
 
 	{Path: "/api/v1/users", Method: "GET", Name: ListActiveUsersSince},
 
+	{Path: "/api/v1/containers", Method: "GET", Name: ListContainers},
+	{Path: "/api/v1/teams/:team_name/containers", Method: "GET", Name: ListAllContainers},
 	{Path: "/api/v1/containers/destroying", Method: "GET", Name: ListDestroyingContainers},
 	{Path: "/api/v1/containers/report", Method: "PUT", Name: ReportWorkerContainers},
-	{Path: "/api/v1/teams/:team_name/containers", Method: "GET", Name: ListContainers},
 	{Path: "/api/v1/teams/:team_name/containers/:id", Method: "GET", Name: GetContainer},
 	{Path: "/api/v1/teams/:team_name/containers/:id/hijack", Method: "GET", Name: HijackContainer},
 
