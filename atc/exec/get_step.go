@@ -198,8 +198,10 @@ func (step *GetStep) Run(ctx context.Context, state RunState) error {
 		}
 	}(logger, events, step.delegate)
 
+	resourceDir := resource.ResourcesDir("get")
+
 	// start of workerClient.RunGetStep?
-	getResult := step.workerClient.RunGetStep(
+	getResult, err := step.workerClient.RunGetStep(
 		ctx,
 		logger,
 		resourceInstance.ContainerOwner(),
@@ -212,69 +214,43 @@ func (step *GetStep) Run(ctx context.Context, state RunState) error {
 		step.resourceFetcher,
 		step.delegate,
 		resourceCache,
+		worker.ProcessSpec{
+			Path:         "/opt/resource/out",
+			Args:         []string{resourceDir},
+			StdoutWriter: step.delegate.Stdout(),
+			StderrWriter: step.delegate.Stderr(),
+		},
 		events,
 	)
-	//chosenWorker, err := step.workerPool.FindOrChooseWorkerForContainer(
-	//	ctx,
-	//	logger,
-	//	resourceInstance.ContainerOwner(),
-	//	containerSpec,
-	//	workerSpec,
-	//	step.strategy,
-	//)
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//step.delegate.Starting(logger)
-	//
-	//versionedSource, err := step.resourceFetcher.Fetch(
-	//	ctx,
-	//	logger,
-	//	step.containerMetadata,
-	//	chosenWorker,
-	//	containerSpec,
-	//	resourceTypes,
-	//	resourceInstance,
-	//	step.delegate,
-	//)
-	//if err != nil {
-	//	logger.Error("failed-to-fetch-resource", err)
-	//
-	//	if err, ok := err.(resource.ErrResourceScriptFailed); ok {
-	//		step.delegate.Finished(logger, ExitStatus(err.ExitStatus), runtime.VersionResult{})
-	//		return nil
-	//	}
-	//
-	//	return err
-	//}
-	//
-	//// end of workerClient.RunGetStep?
-	//state.ArtifactRepository().RegisterArtifact(build.ArtifactName(step.plan.Name), &runtime.GetArtifact{
-	//	VolumeHandle: versionedSource.Volume().Handle(),
-	//})
-	//
-	//versionResult := runtime.VersionResult{
-	//	Version:  versionedSource.Version(),
-	//	Metadata: versionedSource.Metadata(),
-	//}
 
-	if getResult.Err != nil {
-		logger.Error("failed-to-fetch-resource", err)
-		if _, ok := err.(resource.ErrResourceScriptFailed); ok {
-			return nil
-		}
-
+	if err != nil {
 		return err
 	}
 
-	state.ArtifactRepository().RegisterArtifact(build.ArtifactName(step.plan.Name), &getResult.GetArtifact)
+	if getResult.Status == 0 {
+		// TODO move all the state changing logic from resourceInstnanceFetchSource.Create to here
+		//err = volume.InitializeResourceCache(s.resourceInstance.ResourceCache())
+		//if err != nil {
+		//	sLog.Error("failed-to-initialize-cache", err)
+		//	return nil, err
+		//}
+		//
+		//err = s.dbResourceCacheFactory.UpdateResourceCacheMetadata(s.resourceInstance.ResourceCache(), versionedSource.Metadata())
+		//if err != nil {
+		//	s.logger.Error("failed-to-update-resource-cache-metadata", err, lager.Data{"resource-cache": s.resourceInstance.ResourceCache()})
+		//	return nil, err
+		//}
 
-	if step.plan.Resource != "" {
-		step.delegate.UpdateVersion(logger, step.plan, getResult.VersionResult)
+		state.ArtifactRepository().RegisterArtifact(build.ArtifactName(step.plan.Name), &getResult.GetArtifact)
+
+		if step.plan.Resource != "" {
+			step.delegate.UpdateVersion(logger, step.plan, getResult.VersionResult)
+		}
+
+		step.succeeded = true
+	} else {
+		// TODO  have a way of bubbling up the error message from getResult.Err
 	}
-
-	step.succeeded = true
 
 	return nil
 }

@@ -34,6 +34,10 @@ type PutRequest struct {
 	Params atc.Params `json:"params,omitempty"`
 }
 
+type GetRequest struct {
+	Source atc.Source `json:"source"`
+	Params atc.Params `json:"params,omitempty"`
+}
 type Artifact interface {
 	ID() string
 }

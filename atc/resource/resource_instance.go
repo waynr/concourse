@@ -1,10 +1,6 @@
 package resource
 
 import (
-	"crypto/sha256"
-	"encoding/json"
-	"fmt"
-
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
 )
@@ -21,7 +17,7 @@ type ResourceInstance interface {
 	ResourceCache() db.UsedResourceCache
 	ContainerOwner() db.ContainerOwner
 
-	LockName(string) (string, error)
+	//LockName(string) (string, error)
 
 	//FindOn(lager.Logger, worker.Worker) (worker.Volume, bool, error)
 }
@@ -84,21 +80,21 @@ func (instance resourceInstance) ResourceType() ResourceType {
 }
 
 // XXX: this is weird
-func (instance resourceInstance) LockName(workerName string) (string, error) {
-	id := &resourceInstanceLockID{
-		Type:       instance.resourceTypeName,
-		Version:    instance.version,
-		Source:     instance.source,
-		Params:     instance.params,
-		WorkerName: workerName,
-	}
-
-	taskNameJSON, err := json.Marshal(id)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%x", sha256.Sum256(taskNameJSON)), nil
-}
+//func (instance resourceInstance) LockName(workerName string) (string, error) {
+//	id := &resourceInstanceLockID{
+//		Type:       instance.resourceTypeName,
+//		Version:    instance.version,
+//		Source:     instance.source,
+//		Params:     instance.params,
+//		WorkerName: workerName,
+//	}
+//
+//	taskNameJSON, err := json.Marshal(id)
+//	if err != nil {
+//		return "", err
+//	}
+//	return fmt.Sprintf("%x", sha256.Sum256(taskNameJSON)), nil
+//}
 
 //func (instance resourceInstance) FindOn(logger lager.Logger, w worker.Worker) (worker.Volume, bool, error) {
 //	return w.FindVolumeForResourceCache(

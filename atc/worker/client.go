@@ -71,8 +71,9 @@ type Client interface {
 		Fetcher,
 		ImageFetchingDelegate,
 		db.UsedResourceCache,
+		ProcessSpec,
 		chan runtime.Event,
-	) GetResult
+	) (GetResult, error)
 	StreamFileFromArtifact(ctx context.Context, logger lager.Logger, artifact runtime.Artifact, filePath string) (io.ReadCloser, error)
 }
 
@@ -308,8 +309,9 @@ func (client *client) RunGetStep(
 	resourceFetcher Fetcher,
 	delegate ImageFetchingDelegate,
 	cache db.UsedResourceCache,
+	processSpec ProcessSpec,
 	events chan runtime.Event,
-) GetResult {
+) (GetResult, error) {
 	vr := runtime.VersionResult{}
 	chosenWorker, err := client.pool.FindOrChooseWorkerForContainer(
 		ctx,
@@ -320,7 +322,7 @@ func (client *client) RunGetStep(
 		strategy,
 	)
 	if err != nil {
-		return GetResult{Status: -1, VersionResult: vr, Err: err}
+		return GetResult{}, err
 	}
 
 	events <- runtime.Event{
@@ -328,12 +330,13 @@ func (client *client) RunGetStep(
 	}
 
 	// start of dependency on resource -> worker
-	versionedSource, err := resourceFetcher.Fetch(
+	getResult, err := resourceFetcher.Fetch(
 		ctx,
 		logger,
 		containerMetadata,
 		chosenWorker,
 		containerSpec,
+		processSpec,
 		resourceTypes,
 		resourceInstance,
 		delegate,
@@ -341,38 +344,22 @@ func (client *client) RunGetStep(
 	)
 	if err != nil {
 		logger.Error("failed-to-fetch-resource", err)
-		exitStatus := -1
 
-		if err, ok := err.(resource.ErrResourceScriptFailed); ok {
-			exitStatus = err.ExitStatus
-			events <- runtime.Event{
-				EventType:     runtime.FinishedEvent,
-				ExitStatus:    exitStatus,
-				VersionResult: vr,
-			}
-			// TODO This is compatible with old behaviour but is that desired ? Can it be refactored ?
-			return GetResult{}
+		// TODO Define an error on Event for Concourse system errors or define an Concourse system error Exit Status
+		events <- runtime.Event{
+			EventType:     runtime.FinishedEvent,
+			ExitStatus:    500,
+			VersionResult: vr,
 		}
-
-		return GetResult{Status: exitStatus, VersionResult: vr, Err: err}
-	}
-
-	vr = runtime.VersionResult{
-		Version:  versionedSource.Version(),
-		Metadata: versionedSource.Metadata(),
+		return GetResult{}, err
 	}
 
 	events <- runtime.Event{
 		EventType:     runtime.FinishedEvent,
-		VersionResult: vr,
+		ExitStatus:    getResult.Status,
+		VersionResult: getResult.VersionResult,
 	}
-	return GetResult{
-		VersionResult: vr,
-		Err:           nil,
-		GetArtifact: runtime.GetArtifact{
-			VolumeHandle: versionedSource.Volume().Handle(),
-		},
-	}
+	return getResult, nil
 }
 func (client *client) chooseTaskWorker(
 	ctx context.Context,
