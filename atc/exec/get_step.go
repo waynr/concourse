@@ -167,12 +167,11 @@ func (step *GetStep) Run(ctx context.Context, state RunState) error {
 	}
 
 	// TODO containerOwner accepts workerName and this should be extracted out
-	resourceInstance := resource.NewResourceInstance(
-		resource.ResourceType(step.plan.Type),
+	resourceInstance := worker.NewNotResourceInstance(
+		string(step.plan.Type),
 		version,
 		source,
 		params,
-		resourceTypes,
 		resourceCache,
 		db.NewBuildStepContainerOwner(step.metadata.BuildID, step.planID, step.metadata.TeamID),
 	)

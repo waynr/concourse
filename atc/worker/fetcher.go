@@ -17,7 +17,6 @@ import (
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
 	"github.com/concourse/concourse/atc/db/lock"
-	"github.com/concourse/concourse/atc/resource"
 )
 
 const GetResourceLockInterval = 5 * time.Second
@@ -36,7 +35,7 @@ type Fetcher interface {
 		containerSpec ContainerSpec,
 		processSpec ProcessSpec,
 		resourceTypes atc.VersionedResourceTypes,
-		resourceInstance resource.ResourceInstance,
+		resourceInstance NotResourceInstance,
 		imageFetchingDelegate ImageFetchingDelegate,
 		cache db.UsedResourceCache,
 	) (GetResult, error)
@@ -64,6 +63,73 @@ func ResourcesDir(suffix string) string {
 	return filepath.Join("/tmp", "build", suffix)
 }
 
+// TODO: give this a more reasonable name and move this block elsewhere
+type notResourceInstance struct {
+	resourceTypeName string // in resource.ResourceInstance, this was a ResourceType. however that was just a wrapped string, with no further caller methods so..shrug
+	version          atc.Version
+	source           atc.Source
+	params           atc.Params
+
+	resourceCache  db.UsedResourceCache
+	containerOwner db.ContainerOwner
+}
+
+type NotResourceInstance interface {
+	Source() atc.Source
+	Params() atc.Params
+	Version() atc.Version
+	ResourceType() string
+
+	ResourceCache() db.UsedResourceCache
+	ContainerOwner() db.ContainerOwner
+}
+
+func (instance notResourceInstance) ContainerOwner() db.ContainerOwner {
+	return instance.containerOwner
+}
+
+func (instance notResourceInstance) ResourceCache() db.UsedResourceCache {
+	return instance.resourceCache
+}
+
+func (instance notResourceInstance) Source() atc.Source {
+	return instance.source
+}
+
+func (instance notResourceInstance) Params() atc.Params {
+	return instance.params
+}
+
+func (instance notResourceInstance) Version() atc.Version {
+	return instance.version
+}
+
+func (instance notResourceInstance) ResourceType() string {
+	return instance.resourceTypeName
+}
+
+func NewNotResourceInstance(
+	resourceTypeName string,
+	version atc.Version,
+	source atc.Source,
+	params atc.Params,
+
+	resourceCache db.UsedResourceCache,
+	containerOwner db.ContainerOwner,
+) NotResourceInstance {
+	return &notResourceInstance{
+		resourceTypeName: resourceTypeName,
+		version:          version,
+		source:           source,
+		params:           params,
+
+		resourceCache:  resourceCache,
+		containerOwner: containerOwner,
+	}
+}
+
+// TODO: end of the above TODO
+
 func (f *fetcher) Fetch(
 	ctx context.Context,
 	logger lager.Logger,
@@ -72,7 +138,7 @@ func (f *fetcher) Fetch(
 	containerSpec ContainerSpec,
 	processSpec ProcessSpec,
 	resourceTypes atc.VersionedResourceTypes,
-	resourceInstance resource.ResourceInstance, // can we not use resource package here?
+	resourceInstance NotResourceInstance, // can we not use resource package here?
 	imageFetchingDelegate ImageFetchingDelegate,
 	cache db.UsedResourceCache,
 	//) (resource.VersionedSource, error) {

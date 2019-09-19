@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/concourse/concourse/atc/resource"
-
 	"code.cloudfoundry.org/garden"
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/baggageclaim"
@@ -67,7 +65,7 @@ type Client interface {
 		ContainerPlacementStrategy,
 		db.ContainerMetadata,
 		atc.VersionedResourceTypes,
-		resource.ResourceInstance,
+		NotResourceInstance,
 		Fetcher,
 		ImageFetchingDelegate,
 		db.UsedResourceCache,
@@ -305,7 +303,7 @@ func (client *client) RunGetStep(
 	strategy ContainerPlacementStrategy,
 	containerMetadata db.ContainerMetadata,
 	resourceTypes atc.VersionedResourceTypes,
-	resourceInstance resource.ResourceInstance,
+	resourceInstance NotResourceInstance,
 	resourceFetcher Fetcher,
 	delegate ImageFetchingDelegate,
 	cache db.UsedResourceCache,
