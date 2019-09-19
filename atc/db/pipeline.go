@@ -198,6 +198,7 @@ func (p *pipeline) CheckPaused() (bool, error) {
 
 	return paused, nil
 }
+
 func (p *pipeline) Reload() (bool, error) {
 	row := pipelinesQuery.Where(sq.Eq{"p.id": p.id}).
 		RunWith(p.conn).

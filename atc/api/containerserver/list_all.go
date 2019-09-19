@@ -10,6 +10,7 @@ import (
 
 // show all public containers and team private containers if authorized
 func (s *Server) ListAllContainers(w http.ResponseWriter, r *http.Request) {
+
 	logger := s.logger.Session("list-all-containers")
 
 	acc := accessor.GetAccessor(r)
@@ -18,9 +19,9 @@ func (s *Server) ListAllContainers(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	if acc.IsAdmin() {
-		containers, err = s.containerFactory.AllContainers()
+		containers, err = s.containerRepository.AllContainers()
 	} else { ////////////// TODO
-		containers, err = s.containerFactory.VisiblePipelines(acc.TeamNames())
+		containers, err = s.containerRepository.VisibleContainers(acc.TeamNames())
 	}
 
 	if err != nil {

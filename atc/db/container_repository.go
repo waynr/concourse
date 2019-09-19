@@ -17,6 +17,9 @@ type ContainerRepository interface {
 	RemoveDestroyingContainers(workerName string, currentHandles []string) (int, error)
 	UpdateContainersMissingSince(workerName string, handles []string) error
 	RemoveMissingContainers(time.Duration) (int, error)
+
+	VisibleContainers([]string) ([]Container, error)
+	AllContainers() ([]Container, error)
 }
 
 type containerRepository struct {
@@ -268,6 +271,77 @@ func (repository *containerRepository) FindOrphanedContainers() ([]CreatingConta
 	return creatingContainers, createdContainers, destroyingContainers, nil
 }
 
+/////////////////////////////////////////////////////////////////////////////
+func getContainers(teamSelect sq.SelectBuilder) ([]Container, error) {
+
+	rows, err := selectContainers("c").
+		Join("workers w ON c.worker_name = w.name").
+		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
+		Join("resources r ON r.resource_config_id = rccs.resource_config_id").
+		Join("pipelines p ON p.id = r.pipeline_id").
+		Where(teamSelect).
+		Where(sq.Or{
+			teamSelect,
+			sq.Eq{
+				"w.team_id": nil,
+			},
+		}).
+		Distinct().
+		RunWith(t.conn).
+		Query()
+	if err != nil {
+		return nil, err
+	}
+
+	var containers []Container
+	containers, err = scanContainers(rows, t.conn, containers)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err = selectContainers("c").
+		Join("workers w ON c.worker_name = w.name").
+		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
+		Join("resource_types rt ON rt.resource_config_id = rccs.resource_config_id").
+		Join("pipelines p ON p.id = rt.pipeline_id").
+		Where(sq.Eq{
+			"p.team_id": t.id,
+		}).
+		Where(sq.Or{
+			teamSelect,
+			sq.Eq{
+				"w.team_id": nil,
+			},
+		}).
+		Distinct().
+		RunWith(t.conn).
+		Query()
+	if err != nil {
+		return nil, err
+	}
+
+	containers, err = scanContainers(rows, t.conn, containers)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err = selectContainers("c").
+		Where(teamSelect).
+		RunWith(t.conn).
+		Query()
+	if err != nil {
+		return nil, err
+	}
+
+	containers, err = scanContainers(rows, t.conn, containers)
+	if err != nil {
+		return nil, err
+	}
+
+	return containers, nil
+}
+
+/////////////////////////////////////////////////////////////////////////////
 func selectContainers(asOptional ...string) sq.SelectBuilder {
 	columns := []string{"id", "handle", "worker_name", "hijacked", "discontinued", "state"}
 	columns = append(columns, containerMetadataColumns...)
@@ -361,4 +435,55 @@ func (repository *containerRepository) DestroyFailedContainers() (int, error) {
 	}
 
 	return int(failedContainersLen), nil
+}
+
+func (repository *containerRepository) AllContainers() ([]Container, error) {
+	rows, err := selectContainers("c").
+		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
+		Join("resources r ON r.resource_config_id = rccs.resource_config_id").
+		Join("pipelines p ON p.id = r.pipeline_id").
+		Distinct().
+		RunWith(repository.conn).
+		Query()
+
+	if err != nil {
+		return nil, err
+	}
+	return scanContainers(rows, repository.conn, []Container{})
+}
+
+func (repository *containerRepository) VisibleContainers(teamNames []string) ([]Container, error) {
+	rows, err := selectContainers("c").
+		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
+		Join("resources r ON r.resource_config_id = rccs.resource_config_id").
+		Join("pipelines p ON p.id = r.pipeline_id").
+		Distinct().
+		RunWith(repository.conn).
+		Query()
+
+	if err != nil {
+		return nil, err
+	}
+
+	currentTeamContainers, err := scanContainers(rows, repository.conn, repository.lockFactory)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err = pipelinesQuery.
+		Where(sq.NotEq{"t.name": teamNames}).
+		Where(sq.Eq{"public": true}).
+		OrderBy("team_id ASC", "ordering ASC").
+		RunWith(repository.conn).
+		Query()
+	if err != nil {
+		return nil, err
+	}
+
+	otherTeamPublicContainers, err := scanContainers(rows, repository.conn, repository.lockFactory)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(currentTeamContainers, otherTeamPublicContainers...), nil
 }

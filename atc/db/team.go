@@ -151,6 +151,12 @@ func (t *team) FindWorkerForVolume(handle string) (Worker, bool, error) {
 }
 
 func (t *team) Containers() ([]Container, error) {
+	//getContainers(sq.Eq{
+	//	""
+	//})
+	/*
+	trying to consolidate on a single function to be used with team.Containers(), repo.AllContainers, and repo.VisibleContainers
+	 */
 	rows, err := selectContainers("c").
 		Join("workers w ON c.worker_name = w.name").
 		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
