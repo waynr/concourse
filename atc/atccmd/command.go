@@ -544,7 +544,7 @@ func (cmd *RunCommand) constructAPIMembers(
 
 	resourceFactory := resource.NewResourceFactory()
 	dbResourceCacheFactory := db.NewResourceCacheFactory(dbConn, lockFactory)
-	fetchSourceFactory := worker.NewFetchSourceFactory(dbResourceCacheFactory, resourceFactory)
+	fetchSourceFactory := worker.NewFetchSourceFactory(dbResourceCacheFactory)
 	resourceFetcher := worker.NewFetcher(clock.NewClock(), lockFactory, fetchSourceFactory)
 	dbResourceConfigFactory := db.NewResourceConfigFactory(dbConn, lockFactory)
 	imageResourceFetcherFactory := image.NewImageResourceFetcherFactory(
