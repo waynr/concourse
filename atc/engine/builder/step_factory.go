@@ -67,6 +67,7 @@ func (factory *stepFactory) GetStep(
 		factory.strategy,
 		factory.pool,
 		delegate,
+		factory.client,
 	)
 
 	return exec.LogError(getStep, delegate)
