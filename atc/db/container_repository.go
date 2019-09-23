@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"github.com/concourse/concourse/atc/db/lock"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -24,11 +25,13 @@ type ContainerRepository interface {
 
 type containerRepository struct {
 	conn Conn
+	lockFactory lock.LockFactory // TODO
 }
 
-func NewContainerRepository(conn Conn) ContainerRepository {
+func NewContainerRepository(conn Conn, lockFactory lock.LockFactory) ContainerRepository {
 	return &containerRepository{
 		conn: conn,
+		lockFactory: lockFactory,
 	}
 }
 
@@ -272,78 +275,79 @@ func (repository *containerRepository) FindOrphanedContainers() ([]CreatingConta
 }
 
 /////////////////////////////////////////////////////////////////////////////
-func getContainers(teamSelect sq.SelectBuilder) ([]Container, error) {
-
-	rows, err := selectContainers("c").
-		Join("workers w ON c.worker_name = w.name").
-		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
-		Join("resources r ON r.resource_config_id = rccs.resource_config_id").
-		Join("pipelines p ON p.id = r.pipeline_id").
-		Where(teamSelect).
-		Where(sq.Or{
-			teamSelect,
-			sq.Eq{
-				"w.team_id": nil,
-			},
-		}).
-		Distinct().
-		RunWith(t.conn).
-		Query()
-	if err != nil {
-		return nil, err
-	}
-
-	var containers []Container
-	containers, err = scanContainers(rows, t.conn, containers)
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err = selectContainers("c").
-		Join("workers w ON c.worker_name = w.name").
-		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
-		Join("resource_types rt ON rt.resource_config_id = rccs.resource_config_id").
-		Join("pipelines p ON p.id = rt.pipeline_id").
-		Where(sq.Eq{
-			"p.team_id": t.id,
-		}).
-		Where(sq.Or{
-			teamSelect,
-			sq.Eq{
-				"w.team_id": nil,
-			},
-		}).
-		Distinct().
-		RunWith(t.conn).
-		Query()
-	if err != nil {
-		return nil, err
-	}
-
-	containers, err = scanContainers(rows, t.conn, containers)
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err = selectContainers("c").
-		Where(teamSelect).
-		RunWith(t.conn).
-		Query()
-	if err != nil {
-		return nil, err
-	}
-
-	containers, err = scanContainers(rows, t.conn, containers)
-	if err != nil {
-		return nil, err
-	}
-
-	return containers, nil
-}
+//func getContainers(teamSelect sq.SelectBuilder, repository *containerRepository) ([]Container, error) {
+//
+//	rows, err := selectContainers("c").
+//		Join("workers w ON c.worker_name = w.name").
+//		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
+//		Join("resources r ON r.resource_config_id = rccs.resource_config_id").
+//		Join("pipelines p ON p.id = r.pipeline_id").
+//		Where(teamSelect).
+//		Where(sq.Or{
+//			teamSelect,
+//			sq.Eq{
+//				"w.team_id": nil,
+//			},
+//		}).
+//		Distinct().
+//		RunWith(repository.conn).
+//		Query()
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	var containers []Container
+//	containers, err = scanContainers(rows, repository.conn, containers)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	rows, err = selectContainers("c").
+//		Join("workers w ON c.worker_name = w.name").
+//		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
+//		Join("resource_types rt ON rt.resource_config_id = rccs.resource_config_id").
+//		Join("pipelines p ON p.id = rt.pipeline_id").
+//		Where(sq.Eq{
+//			"p.team_id": t.id,
+//		}).
+//		Where(sq.Or{
+//			teamSelect,
+//			sq.Eq{
+//				"w.team_id": nil,
+//			},
+//		}).
+//		Distinct().
+//		RunWith(repository.conn).
+//		Query()
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	containers, err = scanContainers(rows, repository.conn, containers)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	rows, err = selectContainers("c").
+//		Where(teamSelect).
+//		RunWith(t.conn).
+//		Query()
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	containers, err = scanContainers(rows, t.conn, containers)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	return containers, nil
+//}
 
 /////////////////////////////////////////////////////////////////////////////
-func selectContainers(asOptional ...string) sq.SelectBuilder {
+func selectContainersWithColumns(additionalColumns []string, asOptional ...string) sq.SelectBuilder {
 	columns := []string{"id", "handle", "worker_name", "hijacked", "discontinued", "state"}
+
 	columns = append(columns, containerMetadataColumns...)
 
 	table := "containers"
@@ -355,8 +359,12 @@ func selectContainers(asOptional ...string) sq.SelectBuilder {
 
 		table += " " + as
 	}
-
+	columns = append(columns, additionalColumns...)
 	return psql.Select(columns...).From(table)
+}
+
+func selectContainers (asOptional ...string) sq.SelectBuilder{
+	return selectContainersWithColumns([]string{}, asOptional...)
 }
 
 func scanContainer(row sq.RowScanner, conn Conn) (CreatingContainer, CreatedContainer, DestroyingContainer, FailedContainer, error) {
@@ -438,10 +446,12 @@ func (repository *containerRepository) DestroyFailedContainers() (int, error) {
 }
 
 func (repository *containerRepository) AllContainers() ([]Container, error) {
-	rows, err := selectContainers("c").
+	rows, err := selectContainersWithColumns( []string{"t.name"}, "c").
+		Join("workers w ON c.worker_name = w.name").
 		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
 		Join("resources r ON r.resource_config_id = rccs.resource_config_id").
 		Join("pipelines p ON p.id = r.pipeline_id").
+		Join("teams t ON t.id = p.team_id").
 		Distinct().
 		RunWith(repository.conn).
 		Query()
@@ -457,6 +467,8 @@ func (repository *containerRepository) VisibleContainers(teamNames []string) ([]
 		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
 		Join("resources r ON r.resource_config_id = rccs.resource_config_id").
 		Join("pipelines p ON p.id = r.pipeline_id").
+		Join("teams t ON t.id = p.team_id").
+		Where("in ('monitoring-hush-house')").
 		Distinct().
 		RunWith(repository.conn).
 		Query()
@@ -465,25 +477,29 @@ func (repository *containerRepository) VisibleContainers(teamNames []string) ([]
 		return nil, err
 	}
 
-	currentTeamContainers, err := scanContainers(rows, repository.conn, repository.lockFactory)
+	var containers []Container
+	currentTeamContainers, err := scanContainers(rows, repository.conn, containers)
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err = pipelinesQuery.
-		Where(sq.NotEq{"t.name": teamNames}).
-		Where(sq.Eq{"public": true}).
-		OrderBy("team_id ASC", "ordering ASC").
-		RunWith(repository.conn).
-		Query()
-	if err != nil {
-		return nil, err
-	}
+	//TODO: figure out whether we do have otherTeamPublicContainers
 
-	otherTeamPublicContainers, err := scanContainers(rows, repository.conn, repository.lockFactory)
-	if err != nil {
-		return nil, err
-	}
+	//rows, err = pipelinesQuery.
+	//	Where(sq.NotEq{"t.name": teamNames}).
+	//	Where(sq.Eq{"public": true}).
+	//	OrderBy("team_id ASC", "ordering ASC").
+	//	RunWith(repository.conn).
+	//	Query()
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//otherTeamPublicContainers, err := scanContainers(rows, repository.conn, containers)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//return append(currentTeamContainers, otherTeamPublicContainers...), nil
 
-	return append(currentTeamContainers, otherTeamPublicContainers...), nil
+	return currentTeamContainers, nil
 }

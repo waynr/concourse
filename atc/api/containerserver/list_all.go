@@ -20,7 +20,7 @@ func (s *Server) ListAllContainers(w http.ResponseWriter, r *http.Request) {
 
 	if acc.IsAdmin() {
 		containers, err = s.containerRepository.AllContainers()
-	} else { ////////////// TODO
+	} else {
 		containers, err = s.containerRepository.VisibleContainers(acc.TeamNames())
 	}
 
