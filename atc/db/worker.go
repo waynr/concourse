@@ -330,6 +330,7 @@ func (worker *worker) CreateContainer(owner ContainerOwner, meta ContainerMetada
 		containerID,
 		handle.String(),
 		worker.name,
+		"",
 		*metadata,
 		worker.conn,
 	), nil

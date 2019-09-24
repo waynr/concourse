@@ -393,6 +393,7 @@ func scanContainer(row sq.RowScanner, conn Conn) (CreatingContainer, CreatedCont
 			id,
 			handle,
 			workerName,
+			"",
 			metadata,
 			conn,
 		), nil, nil, nil, nil
@@ -401,6 +402,7 @@ func scanContainer(row sq.RowScanner, conn Conn) (CreatingContainer, CreatedCont
 			id,
 			handle,
 			workerName,
+			"",
 			metadata,
 			isHijacked,
 			conn,
@@ -410,6 +412,7 @@ func scanContainer(row sq.RowScanner, conn Conn) (CreatingContainer, CreatedCont
 			id,
 			handle,
 			workerName,
+			"",
 			metadata,
 			isDiscontinued,
 			conn,
@@ -419,6 +422,73 @@ func scanContainer(row sq.RowScanner, conn Conn) (CreatingContainer, CreatedCont
 			id,
 			handle,
 			workerName,
+			"",
+			metadata,
+			conn,
+		), nil
+	}
+
+	return nil, nil, nil, nil, nil
+}
+
+func scanContainerWithTeamName(row sq.RowScanner, conn Conn) (CreatingContainer, CreatedContainer, DestroyingContainer, FailedContainer, error) {
+	var (
+		id             int
+		handle         string
+		workerName     string
+		teamName string
+		isDiscontinued bool
+		isHijacked     bool
+		state          string
+
+		metadata ContainerMetadata
+	)
+
+	columns := []interface{}{&id, &handle, &workerName, &isHijacked, &isDiscontinued, &state}
+	columns = append(columns, metadata.ScanTargets()...)
+	columns = append(columns, &teamName)
+
+	err := row.Scan(columns...)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	switch state {
+	case atc.ContainerStateCreating:
+		return newCreatingContainer(
+			id,
+			handle,
+			workerName,
+			teamName,
+			metadata,
+			conn,
+		), nil, nil, nil, nil
+	case atc.ContainerStateCreated:
+		return nil, newCreatedContainer(
+			id,
+			handle,
+			workerName,
+			teamName,
+			metadata,
+			isHijacked,
+			conn,
+		), nil, nil, nil
+	case atc.ContainerStateDestroying:
+		return nil, nil, newDestroyingContainer(
+			id,
+			handle,
+			workerName,
+			teamName,
+			metadata,
+			isDiscontinued,
+			conn,
+		), nil, nil
+	case atc.ContainerStateFailed:
+		return nil, nil, nil, newFailedContainer(
+			id,
+			handle,
+			workerName,
+			teamName,
 			metadata,
 			conn,
 		), nil
@@ -446,30 +516,20 @@ func (repository *containerRepository) DestroyFailedContainers() (int, error) {
 }
 
 func (repository *containerRepository) AllContainers() ([]Container, error) {
-	rows, err := selectContainersWithColumns( []string{"t.name"}, "c").
-		Join("workers w ON c.worker_name = w.name").
-		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
-		Join("resources r ON r.resource_config_id = rccs.resource_config_id").
-		Join("pipelines p ON p.id = r.pipeline_id").
-		Join("teams t ON t.id = p.team_id").
-		Distinct().
+	rows, err := selectContainersWithColumns( []string{"COALESCE(t.name, '') as team_name"}, "c").
+		LeftJoin("teams t on t.id = c.team_id").
 		RunWith(repository.conn).
 		Query()
-
 	if err != nil {
 		return nil, err
 	}
-	return scanContainers(rows, repository.conn, []Container{})
+	return scanContainersWithTeamName(rows, repository.conn, []Container{})
 }
 
 func (repository *containerRepository) VisibleContainers(teamNames []string) ([]Container, error) {
-	rows, err := selectContainers("c").
-		Join("resource_config_check_sessions rccs ON rccs.id = c.resource_config_check_session_id").
-		Join("resources r ON r.resource_config_id = rccs.resource_config_id").
-		Join("pipelines p ON p.id = r.pipeline_id").
-		Join("teams t ON t.id = p.team_id").
-		Where("in ('monitoring-hush-house')").
-		Distinct().
+	rows, err := selectContainersWithColumns([]string{"COALESCE(t.name, '') as team_name"}, "c").
+		LeftJoin("teams t on t.id = c.team_id").
+		Where("t.name in ('main')").
 		RunWith(repository.conn).
 		Query()
 
@@ -478,7 +538,7 @@ func (repository *containerRepository) VisibleContainers(teamNames []string) ([]
 	}
 
 	var containers []Container
-	currentTeamContainers, err := scanContainers(rows, repository.conn, containers)
+	currentTeamContainers, err := scanContainersWithTeamName(rows, repository.conn, containers)
 	if err != nil {
 		return nil, err
 	}

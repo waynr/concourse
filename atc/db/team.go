@@ -1216,6 +1216,33 @@ func scanContainers(rows *sql.Rows, conn Conn, initContainers []Container) ([]Co
 	return containers, nil
 }
 
+func scanContainersWithTeamName(rows *sql.Rows, conn Conn, initContainers []Container) ([]Container, error) {
+	containers := initContainers
+
+	defer Close(rows)
+
+	for rows.Next() {
+		creating, created, destroying, _, err := scanContainerWithTeamName(rows, conn)
+		if err != nil {
+			return []Container{}, err
+		}
+
+		if creating != nil {
+			containers = append(containers, creating)
+		}
+
+		if created != nil {
+			containers = append(containers, created)
+		}
+
+		if destroying != nil {
+			containers = append(containers, destroying)
+		}
+	}
+
+	return containers, nil
+}
+
 func (t *team) queryTeam(tx Tx, query string, params ...interface{}) error {
 	var providerAuth, nonce sql.NullString
 
