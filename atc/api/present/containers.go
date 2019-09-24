@@ -10,7 +10,7 @@ func Containers(savedContainers []db.Container) []atc.Container {
 	containers := make([]atc.Container, len(savedContainers))
 
 	for i := range savedContainers {
-		containers[i] = Container(savedContainers[i], time.Now()) // TODO: double check this
+		containers[i] = Container(savedContainers[i], time.Now())
 	}
 
 	return containers

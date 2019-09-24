@@ -36,7 +36,7 @@ type creatingContainer struct {
 	id         int
 	handle     string
 	workerName string
-	teamName string
+	teamName   string
 	metadata   ContainerMetadata
 	conn       Conn
 }
@@ -53,16 +53,16 @@ func newCreatingContainer(
 		id:         id,
 		handle:     handle,
 		workerName: workerName,
-		teamName: teamName,
+		teamName:   teamName,
 		metadata:   metadata,
 		conn:       conn,
 	}
 }
 
-func (container *creatingContainer) ID() int                     { return container.id }
-func (container *creatingContainer) State() string               { return atc.ContainerStateCreating }
-func (container *creatingContainer) Handle() string              { return container.handle }
-func (container *creatingContainer) WorkerName() string          { return container.workerName }
+func (container *creatingContainer) ID() int            { return container.id }
+func (container *creatingContainer) State() string      { return atc.ContainerStateCreating }
+func (container *creatingContainer) Handle() string     { return container.handle }
+func (container *creatingContainer) WorkerName() string { return container.workerName }
 func (container *creatingContainer) TeamName() string {
 	return container.teamName
 }
@@ -154,7 +154,7 @@ type createdContainer struct {
 	id         int
 	handle     string
 	workerName string
-	teamName string
+	teamName   string
 	metadata   ContainerMetadata
 
 	hijacked bool
@@ -175,16 +175,17 @@ func newCreatedContainer(
 		id:         id,
 		handle:     handle,
 		workerName: workerName,
+		teamName:   teamName,
 		metadata:   metadata,
 		hijacked:   hijacked,
 		conn:       conn,
 	}
 }
 
-func (container *createdContainer) ID() int                     { return container.id }
-func (container *createdContainer) State() string               { return atc.ContainerStateCreated }
-func (container *createdContainer) Handle() string              { return container.handle }
-func (container *createdContainer) WorkerName() string          { return container.workerName }
+func (container *createdContainer) ID() int            { return container.id }
+func (container *createdContainer) State() string      { return atc.ContainerStateCreated }
+func (container *createdContainer) Handle() string     { return container.handle }
+func (container *createdContainer) WorkerName() string { return container.workerName }
 func (container *createdContainer) TeamName() string {
 	return container.teamName
 }
@@ -306,7 +307,7 @@ type destroyingContainer struct {
 	id         int
 	handle     string
 	workerName string
-	teamName string
+	teamName   string
 	metadata   ContainerMetadata
 
 	isDiscontinued bool
@@ -327,16 +328,17 @@ func newDestroyingContainer(
 		id:             id,
 		handle:         handle,
 		workerName:     workerName,
+		teamName:       teamName,
 		metadata:       metadata,
 		isDiscontinued: isDiscontinued,
 		conn:           conn,
 	}
 }
 
-func (container *destroyingContainer) ID() int                     { return container.id }
-func (container *destroyingContainer) State() string               { return atc.ContainerStateDestroying }
-func (container *destroyingContainer) Handle() string              { return container.handle }
-func (container *destroyingContainer) WorkerName() string          { return container.workerName }
+func (container *destroyingContainer) ID() int            { return container.id }
+func (container *destroyingContainer) State() string      { return atc.ContainerStateDestroying }
+func (container *destroyingContainer) Handle() string     { return container.handle }
+func (container *destroyingContainer) WorkerName() string { return container.workerName }
 func (container *destroyingContainer) TeamName() string {
 	return container.teamName
 }
@@ -380,7 +382,7 @@ type failedContainer struct {
 	id         int
 	handle     string
 	workerName string
-	teamName string
+	teamName   string
 	metadata   ContainerMetadata
 	conn       Conn
 }
@@ -397,16 +399,16 @@ func newFailedContainer(
 		id:         id,
 		handle:     handle,
 		workerName: workerName,
-		teamName: teamName,
+		teamName:   teamName,
 		metadata:   metadata,
 		conn:       conn,
 	}
 }
 
-func (container *failedContainer) ID() int                     { return container.id }
-func (container *failedContainer) State() string               { return atc.ContainerStateFailed }
-func (container *failedContainer) Handle() string              { return container.handle }
-func (container *failedContainer) WorkerName() string          { return container.workerName }
+func (container *failedContainer) ID() int            { return container.id }
+func (container *failedContainer) State() string      { return atc.ContainerStateFailed }
+func (container *failedContainer) Handle() string     { return container.handle }
+func (container *failedContainer) WorkerName() string { return container.workerName }
 func (container *failedContainer) TeamName() string {
 	return container.teamName
 }
