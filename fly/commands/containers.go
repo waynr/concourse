@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/concourse/concourse/atc"
-	"github.com/concourse/concourse/go-concourse/concourse"
 	"github.com/concourse/concourse/fly/commands/internal/displayhelpers"
 	"github.com/concourse/concourse/fly/rc"
 	"github.com/concourse/concourse/fly/ui"
@@ -36,32 +35,11 @@ func (command *ContainersCommand) Execute([]string) error {
 	}
 
 	var containers []atc.Container
-	var teams []concourse.Team
 
 	client := target.Client()
-	if command.AllTeams {
-		atcTeams, err := client.ListTeams()
-		if err != nil {
-			return err
-		}
-		for _, atcTeam := range atcTeams {
-			teams = append(teams, client.Team(atcTeam.Name))
-		}
-	} else if len(command.Teams) > 0 {
-		for _, teamName := range command.Teams {
-			teams = append(teams, client.Team(teamName))
-		}
-
-	} else {
-		teams = append(teams, target.Team())
-	}
-
-	for _, team := range teams {
-		teamContainers, err := team.ListContainers(map[string]string{})
-		if err != nil {
-			return err
-		}
-		containers = append(containers, teamContainers...)
+	containers, err = client.ListAllContainers()
+	if err != nil {
+		return err
 	}
 
 	if command.Json {
@@ -83,6 +61,7 @@ func (command *ContainersCommand) Execute([]string) error {
 			{Contents: "type", Color: color.New(color.Bold)},
 			{Contents: "name", Color: color.New(color.Bold)},
 			{Contents: "attempt", Color: color.New(color.Bold)},
+			{Contents: "team", Color: color.New(color.Bold)},
 		},
 	}
 
@@ -97,6 +76,7 @@ func (command *ContainersCommand) Execute([]string) error {
 			{Contents: c.Type},
 			stringOrDefault(c.StepName + c.ResourceName),
 			stringOrDefault(c.Attempt, "n/a"),
+			stringOrDefault(c.TeamName, "n/a"),
 		}
 
 		table.Data = append(table.Data, row)
