@@ -4,11 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/concourse/concourse/atc/runner"
+	"github.com/concourse/concourse/atc/storage"
 
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
-	"github.com/concourse/concourse/atc/worker"
 )
 
 //go:generate counterfeiter . ResourceInstance
@@ -25,7 +26,7 @@ type ResourceInstance interface {
 
 	LockName(string) (string, error)
 
-	FindOn(lager.Logger, worker.Worker) (worker.Volume, bool, error)
+	FindOn(lager.Logger, runner.Client) (storage.Blob, bool, error)
 }
 
 type resourceInstance struct {
@@ -102,8 +103,8 @@ func (instance resourceInstance) LockName(workerName string) (string, error) {
 	return fmt.Sprintf("%x", sha256.Sum256(taskNameJSON)), nil
 }
 
-func (instance resourceInstance) FindOn(logger lager.Logger, w worker.Worker) (worker.Volume, bool, error) {
-	return w.FindVolumeForResourceCache(
+func (instance resourceInstance) FindOn(logger lager.Logger, c runner.Client) (storage.Blob, bool, error) {
+	return c.FindVolumeForResourceCache(
 		logger,
 		instance.resourceCache,
 	)

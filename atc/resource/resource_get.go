@@ -2,9 +2,9 @@ package resource
 
 import (
 	"context"
+	"github.com/concourse/concourse/atc/storage"
 
 	"github.com/concourse/concourse/atc"
-	"github.com/concourse/concourse/atc/worker"
 )
 
 type getRequest struct {
@@ -15,7 +15,7 @@ type getRequest struct {
 
 func (resource *resource) Get(
 	ctx context.Context,
-	volume worker.Volume,
+	blob storage.Blob,
 	ioConfig IOConfig,
 	source atc.Source,
 	params atc.Params,
@@ -36,5 +36,5 @@ func (resource *resource) Get(
 		return nil, err
 	}
 
-	return NewGetVersionedSource(volume, vr.Version, vr.Metadata), nil
+	return NewGetVersionedSource(blob, vr.Version, vr.Metadata), nil
 }

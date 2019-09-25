@@ -12,6 +12,7 @@ import (
 //go:generate counterfeiter . Volume
 
 type Volume interface {
+
 	Handle() string
 	Path() string
 

@@ -2,11 +2,11 @@ package resource
 
 import (
 	"context"
+	"github.com/concourse/concourse/atc/storage"
 	"io"
 	"path"
 
 	"github.com/concourse/concourse/atc"
-	"github.com/concourse/concourse/atc/worker"
 )
 
 //go:generate counterfeiter . VersionedSource
@@ -18,7 +18,7 @@ type VersionedSource interface {
 	StreamOut(context.Context, string) (io.ReadCloser, error)
 	StreamIn(context.Context, string, io.Reader) error
 
-	Volume() worker.Volume
+	Volume() storage.Blob
 }
 
 type VersionResult struct {
@@ -27,9 +27,9 @@ type VersionResult struct {
 	Metadata []atc.MetadataField `json:"metadata,omitempty"`
 }
 
-func NewGetVersionedSource(volume worker.Volume, version atc.Version, metadata []atc.MetadataField) VersionedSource {
+func NewGetVersionedSource(blob storage.Blob, version atc.Version, metadata []atc.MetadataField) VersionedSource {
 	return &getVersionedSource{
-		volume:      volume,
+		blob:      blob,
 		resourceDir: ResourcesDir("get"),
 
 		versionResult: VersionResult{
@@ -42,7 +42,7 @@ func NewGetVersionedSource(volume worker.Volume, version atc.Version, metadata [
 type getVersionedSource struct {
 	versionResult VersionResult
 
-	volume      worker.Volume
+	blob      storage.Blob
 	resourceDir string
 }
 
@@ -55,7 +55,7 @@ func (vs *getVersionedSource) Metadata() []atc.MetadataField {
 }
 
 func (vs *getVersionedSource) StreamOut(ctx context.Context, src string) (io.ReadCloser, error) {
-	readCloser, err := vs.volume.StreamOut(ctx, src)
+	readCloser, err := vs.blob.StreamOut(ctx, src)
 	if err != nil {
 		return nil, err
 	}
@@ -64,9 +64,9 @@ func (vs *getVersionedSource) StreamOut(ctx context.Context, src string) (io.Rea
 }
 
 func (vs *getVersionedSource) StreamIn(ctx context.Context, dst string, src io.Reader) error {
-	return vs.volume.StreamIn(ctx, path.Join(vs.resourceDir, dst), src)
+	return vs.blob.StreamIn(ctx, path.Join(vs.resourceDir, dst), src)
 }
 
-func (vs *getVersionedSource) Volume() worker.Volume {
-	return vs.volume
+func (vs *getVersionedSource) Volume() storage.Blob {
+	return vs.blob
 }

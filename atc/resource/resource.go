@@ -2,23 +2,23 @@ package resource
 
 import (
 	"context"
+	"github.com/concourse/concourse/atc/storage"
 	"io"
 	"path/filepath"
 
 	"github.com/concourse/concourse/atc"
-	"github.com/concourse/concourse/atc/worker"
 )
 
 //go:generate counterfeiter . ResourceFactory
 
 type ResourceFactory interface {
-	NewResourceForContainer(container worker.Container) Resource
+	NewResourceForContainer(blob storage.Blob) Resource
 }
 
 //go:generate counterfeiter . Resource
 
 type Resource interface {
-	Get(context.Context, worker.Volume, IOConfig, atc.Source, atc.Params, atc.Version) (VersionedSource, error)
+	Get(context.Context, storage.Blob, IOConfig, atc.Source, atc.Params, atc.Version) (VersionedSource, error)
 	Put(context.Context, IOConfig, atc.Source, atc.Params) (VersionResult, error)
 	Check(context.Context, atc.Source, atc.Version) ([]atc.Version, error)
 }
@@ -39,14 +39,15 @@ func ResourcesDir(suffix string) string {
 	return filepath.Join("/tmp", "build", suffix)
 }
 
-func NewResource(container worker.Container) *resource {
+func NewResource(blob storage.Blob) *resource {
 	return &resource{
-		container: container,
+		blob: blob,
 	}
 }
 
 type resource struct {
-	container worker.Container
+	//container worker.Container
+	blob storage.Blob
 
 	ScriptFailure bool
 }
@@ -57,6 +58,6 @@ func NewResourceFactory() *resourceFactory {
 
 type resourceFactory struct{}
 
-func (rf *resourceFactory) NewResourceForContainer(container worker.Container) Resource {
-	return NewResource(container)
+func (rf *resourceFactory) NewResourceForContainer(blob storage.Blob) Resource {
+	return NewResource(blob)
 }
