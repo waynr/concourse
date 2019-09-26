@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/concourse/concourse/atc/runtime"
+
 	"code.cloudfoundry.org/clock"
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/concourse/atc"
@@ -23,7 +25,6 @@ var GlobalResourceCheckTimeout time.Duration
 type resourceScanner struct {
 	clock                 clock.Clock
 	pool                  worker.Pool
-	resourceFactory       resource.ResourceFactory
 	resourceConfigFactory db.ResourceConfigFactory
 	defaultInterval       time.Duration
 	dbPipeline            db.Pipeline
@@ -35,7 +36,6 @@ type resourceScanner struct {
 func NewResourceScanner(
 	clock clock.Clock,
 	pool worker.Pool,
-	resourceFactory resource.ResourceFactory,
 	resourceConfigFactory db.ResourceConfigFactory,
 	defaultInterval time.Duration,
 	dbPipeline db.Pipeline,
@@ -46,7 +46,6 @@ func NewResourceScanner(
 	return &resourceScanner{
 		clock:                 clock,
 		pool:                  pool,
-		resourceFactory:       resourceFactory,
 		resourceConfigFactory: resourceConfigFactory,
 		defaultInterval:       defaultInterval,
 		dbPipeline:            dbPipeline,
@@ -377,8 +376,16 @@ func (scanner *resourceScanner) check(
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	res := scanner.resourceFactory.NewResourceForContainer(container)
-	newVersions, err := res.Check(ctx, source, fromVersion)
+	//TODO: Check if we need to add anything else to this processSpec
+	processSpec := runtime.ProcessSpec{
+		Path: "/opt/resource/check",
+	}
+	params := resource.Params{
+		Source:  source,
+		Version: fromVersion,
+	}
+	res := resource.NewResource(processSpec, params)
+	newVersions, err := res.Check(ctx, container)
 	if err == context.DeadlineExceeded {
 		err = fmt.Errorf("Timed out after %v while checking for new versions - perhaps increase your resource check timeout?", timeout)
 	}
@@ -392,7 +399,7 @@ func (scanner *resourceScanner) check(
 	}.Emit(logger)
 
 	if err != nil {
-		if rErr, ok := err.(resource.ErrResourceScriptFailed); ok {
+		if rErr, ok := err.(runtime.ErrResourceScriptFailed); ok {
 			logger.Info("check-failed", lager.Data{"exit-status": rErr.ExitStatus})
 			return rErr
 		}
@@ -432,7 +439,7 @@ func (scanner *resourceScanner) check(
 }
 
 func swallowErrResourceScriptFailed(err error) error {
-	if _, ok := err.(resource.ErrResourceScriptFailed); ok {
+	if _, ok := err.(runtime.ErrResourceScriptFailed); ok {
 		return nil
 	}
 	return err

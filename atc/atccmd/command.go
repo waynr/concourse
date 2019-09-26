@@ -542,8 +542,8 @@ func (cmd *RunCommand) constructAPIMembers(
 	}
 
 	dbResourceCacheFactory := db.NewResourceCacheFactory(dbConn, lockFactory)
-	//fetchSourceFactory := runtime.NewFetchSourceFactory(dbResourceCacheFactory)
-	//resourceFetcher := runtime.NewFetcher(clock.NewClock(), lockFactory, fetchSourceFactory)
+	fetchSourceFactory := worker.NewFetchSourceFactory(dbResourceCacheFactory)
+	resourceFetcher := worker.NewFetcher(clock.NewClock(), lockFactory, fetchSourceFactory)
 	dbResourceConfigFactory := db.NewResourceConfigFactory(dbConn, lockFactory)
 	imageResourceFetcherFactory := image.NewImageResourceFetcherFactory(
 		dbResourceCacheFactory,
@@ -707,8 +707,8 @@ func (cmd *RunCommand) constructBackendMembers(
 	teamFactory := db.NewTeamFactory(dbConn, lockFactory)
 
 	dbResourceCacheFactory := db.NewResourceCacheFactory(dbConn, lockFactory)
-	//fetchSourceFactory := worker.fetcher.NewFetchSourceFactory(dbResourceCacheFactory)
-	//resourceFetcher := runtime.NewFetcher(clock.NewClock(), lockFactory, fetchSourceFactory)
+	fetchSourceFactory := worker.NewFetchSourceFactory(dbResourceCacheFactory)
+	resourceFetcher := worker.NewFetcher(clock.NewClock(), lockFactory, fetchSourceFactory)
 	dbResourceConfigFactory := db.NewResourceConfigFactory(dbConn, lockFactory)
 	imageResourceFetcherFactory := image.NewImageResourceFetcherFactory(
 		dbResourceCacheFactory,

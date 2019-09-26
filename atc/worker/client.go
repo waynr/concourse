@@ -343,6 +343,7 @@ func (client *client) RunGetStep(
 		chosenWorker,
 		containerSpec,
 		processSpec,
+		resource,
 		resourceTypes,
 		source,
 		params,
@@ -546,8 +547,7 @@ func (client *client) RunPutStep(
 
 	var result PutResult
 	// TODO: pass in events to resource.Put?
-	resource.RunWith(container)
-	vr, err = resource.Put(ctx)
+	vr, err = resource.Put(ctx, container)
 	//err = RunScript(
 	//	ctx,
 	//	container,
@@ -564,7 +564,7 @@ func (client *client) RunPutStep(
 	//)
 
 	if err != nil {
-		if failErr, ok := err.(ErrResourceScriptFailed); ok {
+		if failErr, ok := err.(runtime.ErrResourceScriptFailed); ok {
 			result = PutResult{failErr.ExitStatus, runtime.VersionResult{}, failErr}
 		} else {
 			result = PutResult{-1, runtime.VersionResult{}, err}

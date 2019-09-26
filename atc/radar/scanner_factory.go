@@ -6,7 +6,6 @@ import (
 	"code.cloudfoundry.org/clock"
 	"github.com/concourse/concourse/atc/creds"
 	"github.com/concourse/concourse/atc/db"
-	"github.com/concourse/concourse/atc/resource"
 	"github.com/concourse/concourse/atc/worker"
 )
 
@@ -21,7 +20,6 @@ type ScannerFactory interface {
 
 type scannerFactory struct {
 	pool                         worker.Pool
-	resourceFactory              resource.ResourceFactory
 	resourceConfigFactory        db.ResourceConfigFactory
 	resourceTypeCheckingInterval time.Duration
 	resourceCheckingInterval     time.Duration
@@ -37,7 +35,6 @@ var ContainerExpiries = db.ContainerOwnerExpiries{
 
 func NewScannerFactory(
 	pool worker.Pool,
-	resourceFactory resource.ResourceFactory,
 	resourceConfigFactory db.ResourceConfigFactory,
 	resourceTypeCheckingInterval time.Duration,
 	resourceCheckingInterval time.Duration,
@@ -47,7 +44,6 @@ func NewScannerFactory(
 ) ScannerFactory {
 	return &scannerFactory{
 		pool:                         pool,
-		resourceFactory:              resourceFactory,
 		resourceConfigFactory:        resourceConfigFactory,
 		resourceCheckingInterval:     resourceCheckingInterval,
 		resourceTypeCheckingInterval: resourceTypeCheckingInterval,
@@ -63,7 +59,6 @@ func (f *scannerFactory) NewResourceScanner(dbPipeline db.Pipeline) Scanner {
 	return NewResourceScanner(
 		clock.NewClock(),
 		f.pool,
-		f.resourceFactory,
 		f.resourceConfigFactory,
 		f.resourceCheckingInterval,
 		dbPipeline,
@@ -79,7 +74,6 @@ func (f *scannerFactory) NewResourceTypeScanner(dbPipeline db.Pipeline) Scanner 
 	return NewResourceTypeScanner(
 		clock.NewClock(),
 		f.pool,
-		f.resourceFactory,
 		f.resourceConfigFactory,
 		f.resourceTypeCheckingInterval,
 		dbPipeline,

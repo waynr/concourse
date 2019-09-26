@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/concourse/concourse/atc/runtime"
+
 	"code.cloudfoundry.org/clock"
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/concourse/atc"
@@ -18,7 +20,6 @@ import (
 type resourceTypeScanner struct {
 	clock                 clock.Clock
 	pool                  worker.Pool
-	resourceFactory       resource.ResourceFactory
 	resourceConfigFactory db.ResourceConfigFactory
 	defaultInterval       time.Duration
 	dbPipeline            db.Pipeline
@@ -30,7 +31,6 @@ type resourceTypeScanner struct {
 func NewResourceTypeScanner(
 	clock clock.Clock,
 	pool worker.Pool,
-	resourceFactory resource.ResourceFactory,
 	resourceConfigFactory db.ResourceConfigFactory,
 	defaultInterval time.Duration,
 	dbPipeline db.Pipeline,
@@ -41,7 +41,6 @@ func NewResourceTypeScanner(
 	return &resourceTypeScanner{
 		clock:                 clock,
 		pool:                  pool,
-		resourceFactory:       resourceFactory,
 		resourceConfigFactory: resourceConfigFactory,
 		defaultInterval:       defaultInterval,
 		dbPipeline:            dbPipeline,
@@ -302,11 +301,19 @@ func (scanner *resourceTypeScanner) check(
 		return err
 	}
 
-	res := scanner.resourceFactory.NewResourceForContainer(container)
-	newVersions, err := res.Check(context.TODO(), source, fromVersion)
+	//TODO: Check if we need to add anything else to this processSpec
+	processSpec := runtime.ProcessSpec{
+		Path: "/opt/resource/check",
+	}
+	params := resource.Params{
+		Source:  source,
+		Version: fromVersion,
+	}
+	res := resource.NewResource(processSpec, params)
+	newVersions, err := res.Check(context.TODO(), container)
 	resourceConfigScope.SetCheckError(err)
 	if err != nil {
-		if rErr, ok := err.(resource.ErrResourceScriptFailed); ok {
+		if rErr, ok := err.(runtime.ErrResourceScriptFailed); ok {
 			logger.Info("check-failed", lager.Data{"exit-status": rErr.ExitStatus})
 			return rErr
 		}

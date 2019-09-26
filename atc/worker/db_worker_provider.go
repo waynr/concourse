@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/concourse/concourse/atc/worker/image"
-
 	"code.cloudfoundry.org/clock"
 	"code.cloudfoundry.org/lager"
 	bclient "github.com/concourse/baggageclaim/client"
@@ -38,6 +36,7 @@ type dbWorkerProvider struct {
 func NewDBWorkerProvider(
 	lockFactory lock.LockFactory,
 	retryBackOffFactory retryhttp.BackOffFactory,
+	imageFactory ImageFactory,
 	dbResourceCacheFactory db.ResourceCacheFactory,
 	dbResourceConfigFactory db.ResourceConfigFactory,
 	dbWorkerBaseResourceTypeFactory db.WorkerBaseResourceTypeFactory,
@@ -49,19 +48,10 @@ func NewDBWorkerProvider(
 	workerVersion version.Version,
 	baggageclaimResponseHeaderTimeout time.Duration,
 ) WorkerProvider {
-	fetchSourceFactory := NewFetchSourceFactory(dbResourceCacheFactory)
-	resourceFetcher := NewFetcher(clock.NewClock(), lockFactory, fetchSourceFactory)
-
-	imageResourceFetcherFactory := image.NewImageResourceFetcherFactory(
-		dbResourceCacheFactory,
-		dbResourceConfigFactory,
-		resourceFetcher,
-	)
-
 	return &dbWorkerProvider{
 		lockFactory:                       lockFactory,
 		retryBackOffFactory:               retryBackOffFactory,
-		imageFactory:                      image.NewImageFactory(imageResourceFetcherFactory),
+		imageFactory:                      imageFactory,
 		dbResourceCacheFactory:            dbResourceCacheFactory,
 		dbResourceConfigFactory:           dbResourceConfigFactory,
 		dbWorkerBaseResourceTypeFactory:   dbWorkerBaseResourceTypeFactory,

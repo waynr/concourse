@@ -7,7 +7,6 @@ import (
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
 	"github.com/concourse/concourse/atc/radar"
-	"github.com/concourse/concourse/atc/resource"
 	"github.com/concourse/concourse/atc/scheduler"
 	"github.com/concourse/concourse/atc/scheduler/factory"
 	"github.com/concourse/concourse/atc/scheduler/inputmapper"
@@ -26,7 +25,6 @@ type RadarSchedulerFactory interface {
 
 type radarSchedulerFactory struct {
 	pool                         worker.Pool
-	resourceFactory              resource.ResourceFactory
 	resourceConfigFactory        db.ResourceConfigFactory
 	resourceTypeCheckingInterval time.Duration
 	resourceCheckingInterval     time.Duration
@@ -52,7 +50,6 @@ func NewRadarSchedulerFactory(
 func (rsf *radarSchedulerFactory) BuildScanRunnerFactory(dbPipeline db.Pipeline, externalURL string, variables vars.Variables, notifications radar.Notifications) radar.ScanRunnerFactory {
 	return radar.NewScanRunnerFactory(
 		rsf.pool,
-		rsf.resourceFactory,
 		rsf.resourceConfigFactory,
 		rsf.resourceTypeCheckingInterval,
 		rsf.resourceCheckingInterval,
