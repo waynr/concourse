@@ -4,39 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"github.com/concourse/concourse/atc/runtime"
 	"io"
+
+	"github.com/concourse/concourse/atc/runtime"
 
 	"code.cloudfoundry.org/garden"
 )
-
-const resourceResultPropertyName = "concourse:resource-result"
-
-const ResourceProcessID = "resource"
-
-type ErrResourceScriptFailed struct {
-	Path       string
-	Args       []string
-	ExitStatus int
-
-	Stderr string
-}
-
-func (err ErrResourceScriptFailed) Error() string {
-	msg := fmt.Sprintf(
-		"resource script '%s %v' failed: exit status %d",
-		err.Path,
-		err.Args,
-		err.ExitStatus,
-	)
-
-	if len(err.Stderr) > 0 {
-		msg += "\n\nstderr:\n" + err.Stderr
-	}
-
-	return msg
-}
 
 func RunScript(
 	ctx context.Context,
@@ -86,10 +59,10 @@ func RunScript(
 			process, err = container.Run(
 				ctx,
 				garden.ProcessSpec{
-				ID:   ResourceProcessID,
-				Path: path,
-				Args: args,
-			}, processIO)
+					ID:   ResourceProcessID,
+					Path: path,
+					Args: args,
+				}, processIO)
 			if err != nil {
 				return err
 			}
@@ -101,9 +74,9 @@ func RunScript(
 		process, err = container.Run(
 			ctx,
 			garden.ProcessSpec{
-			Path: path,
-			Args: args,
-		}, processIO)
+				Path: path,
+				Args: args,
+			}, processIO)
 		if err != nil {
 			return err
 		}

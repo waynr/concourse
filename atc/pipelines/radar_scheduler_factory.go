@@ -35,7 +35,6 @@ type radarSchedulerFactory struct {
 
 func NewRadarSchedulerFactory(
 	pool worker.Pool,
-	resourceFactory resource.ResourceFactory,
 	resourceConfigFactory db.ResourceConfigFactory,
 	resourceTypeCheckingInterval time.Duration,
 	resourceCheckingInterval time.Duration,
@@ -43,7 +42,6 @@ func NewRadarSchedulerFactory(
 ) RadarSchedulerFactory {
 	return &radarSchedulerFactory{
 		pool:                         pool,
-		resourceFactory:              resourceFactory,
 		resourceConfigFactory:        resourceConfigFactory,
 		resourceTypeCheckingInterval: resourceTypeCheckingInterval,
 		resourceCheckingInterval:     resourceCheckingInterval,
