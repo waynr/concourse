@@ -1,6 +1,8 @@
 package db_test
 
 import (
+	"database/sql"
+	"strconv"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -993,6 +995,62 @@ var _ = Describe("ContainerRepository", func() {
 
 			It("does not return an error", func() {
 				Expect(err).ToNot(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("Containers from different teams", func() {
+		var (
+			err    error
+			result sql.Result
+		)
+
+		var createContainerWithTeamNameAndID = func(id int, name string) {
+			result, err = psql.Insert("teams").SetMap(map[string]interface{}{
+				"id":   id,
+				"name": name,
+			}).RunWith(dbConn).Exec()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RowsAffected()).To(Equal(int64(1)))
+
+			result, err = psql.Insert("containers").SetMap(map[string]interface{}{
+				"handle":      "handle-id-" + strconv.Itoa(id),
+				"worker_name": defaultWorker.Name(),
+				"team_id":     id,
+			}).RunWith(dbConn).Exec()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RowsAffected()).To(Equal(int64(1)))
+		}
+
+		Context("AllContainers", func() {
+			BeforeEach(func() {
+				createContainerWithTeamNameAndID(111, "team1")
+				createContainerWithTeamNameAndID(222, "team2")
+			})
+
+			It("returns all containers", func() {
+				allContainers, err := containerRepository.AllContainers()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(len(allContainers)).To(Equal(2))
+				Expect(allContainers[0].TeamName()).To(Equal("team1"))
+				Expect(allContainers[1].TeamName()).To(Equal("team2"))
+			})
+		})
+
+		Context("VisibleContainers", func() {
+			BeforeEach(func() {
+				createContainerWithTeamNameAndID(111, "team1")
+				createContainerWithTeamNameAndID(222, "team2")
+				createContainerWithTeamNameAndID(333, "team3")
+			})
+
+			It("returns visible containers for the given teams", func() {
+				visibleContainers, err := containerRepository.VisibleContainers([]string{"team1", "team2"})
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(visibleContainers).To(HaveLen(2))
+				Expect(visibleContainers[0].TeamName()).To(Equal("team1"))
+				Expect(visibleContainers[1].TeamName()).To(Equal("team2"))
 			})
 		})
 	})

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"errors"
+	"github.com/concourse/concourse/go-concourse/concourse"
 	"os"
 	"sort"
 	"strconv"
@@ -35,11 +36,28 @@ func (command *ContainersCommand) Execute([]string) error {
 	}
 
 	var containers []atc.Container
-
 	client := target.Client()
-	containers, err = client.ListAllContainers()
-	if err != nil {
-		return err
+	if command.AllTeams {
+		containers, err = client.ListAllContainers()
+		if err != nil {
+			return err
+		}
+	} else {
+		var teams []concourse.Team
+		if len(command.Teams) > 0 {
+			for _, teamName := range command.Teams {
+				teams = append(teams, client.Team(teamName))
+			}
+		} else {
+			teams = append(teams, target.Team())
+		}
+		for _, team := range teams {
+			teamContainers, err := team.ListContainers(map[string]string{})
+			if err != nil {
+				return err
+			}
+			containers = append(containers, teamContainers...)
+		}
 	}
 
 	if command.Json {

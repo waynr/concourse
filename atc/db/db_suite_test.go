@@ -96,7 +96,7 @@ var _ = BeforeEach(func() {
 
 	buildFactory = db.NewBuildFactory(dbConn, lockFactory, 5*time.Minute)
 	volumeRepository = db.NewVolumeRepository(dbConn)
-	containerRepository = db.NewContainerRepository(dbConn)
+	containerRepository = db.NewContainerRepository(dbConn, lockFactory)
 	teamFactory = db.NewTeamFactory(dbConn, lockFactory)
 	workerFactory = db.NewWorkerFactory(dbConn)
 	workerLifecycle = db.NewWorkerLifecycle(dbConn)
